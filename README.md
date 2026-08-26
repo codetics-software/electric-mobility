@@ -38,6 +38,18 @@ Trigger this skill whenever working on:
 - NAP / IRVE compliance in France
 - Tariff modeling and billing pipelines for EV charging
 
+## Installation
+
+Install this skill with:
+
+```bash
+npx skills add https://github.com/codetics-software/electric-mobility
+```
+Or 
+```bash
+npx skills add codetics-software/electric-mobility
+```
+
 ## Key concepts at a glance
 
 ```

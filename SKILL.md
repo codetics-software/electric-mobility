@@ -1,3 +1,16 @@
+---
+name: electric-mobility
+description: >
+  Electric mobility software engineering skill covering OCPI, OCPP,
+  EV charging infrastructure, CPO/eMSP systems, roaming, CSMS,
+  charging sessions, CDRs, tariffs, smart charging, and IRVE.
+license: MIT
+metadata:
+  author: Codetics
+  repository: https://github.com/codetics-software/electric-mobility
+  topics: ocpi, ocpp, electric-mobility, ev-charging, cpo, emsp, csms
+---
+
 # Electric Mobility Skill — Codetics
 
 > **Trigger this skill** whenever a task involves OCPI, OCPP, EV charging infrastructure, CPO/eMSP systems, roaming, charge sessions, CDRs, tariffs, smart charging, or any electric mobility protocol.
