@@ -1,0 +1,57 @@
+{
+  "skill_name": "electric-mobility",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I'm building an eMSP and I need to implement remote start charging. The user taps 'Start charging' in our mobile app. Our backend talks to the CPO through OCPI and the CPO has a CSMS connected to the charger through OCPP 1.6. Can you explain the complete flow and how I should model the operation in my backend? Also tell me what response I can give to the mobile app immediately after sending the request.",
+      "expected_output": "A protocol-aware explanation that clearly separates eMSP, CPO, CSMS, and charging-station responsibilities. It should distinguish the OCPI command from the downstream OCPP operation and explain that accepting an OCPI command does not necessarily mean that charging has started. The answer should model the operation asynchronously, explain correlation between the request and downstream result, and describe how the eventual charging/session state should be observed or propagated back to the eMSP. It should explicitly account for OCPP 1.6 rather than assuming OCPP 2.x semantics.",
+      "assertions": [
+        "The output distinguishes the eMSP, CPO, CSMS, and charging station roles.",
+        "The output distinguishes the OCPI operation from the downstream OCPP operation.",
+        "The output explicitly states that an accepted/processed remote-start request does not necessarily mean that charging has started.",
+        "The output models remote start as an asynchronous operation rather than a single synchronous request.",
+        "The output explains how the operation should be correlated across the distributed system.",
+        "The output does not silently substitute OCPP 2.x behavior for OCPP 1.6 behavior."
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "We receive Locations from a CPO over OCPI 2.2.1. Our database stores Location, EVSE and Connector objects. The CPO says that an EVSE has been removed and wants us to delete it from our database. What should we actually do? I'm also unsure whether we should delete historical sessions and CDRs referencing that EVSE.",
+      "expected_output": "The answer should explain OCPI ownership and distinguish the CPO's source data from the eMSP's synchronized copy. It should explain that an EVSE being removed is not equivalent to deleting historical charging records. The response should preserve historical Sessions/CDRs as appropriate and explain how the current infrastructure representation should be synchronized according to OCPI 2.2.1 semantics, including version-specific last_updated handling where relevant.",
+      "assertions": [
+        "The output identifies the CPO as the owner/source of the Location hierarchy being synchronized.",
+        "The output distinguishes the eMSP's database copy from ownership of the underlying charging infrastructure data.",
+        "The output does not recommend blindly deleting historical Sessions or CDRs because an EVSE was removed.",
+        "The output distinguishes current infrastructure state from historical charging records.",
+        "The output explicitly considers OCPI 2.2.1 rather than giving only version-agnostic advice.",
+        "The output addresses synchronization/versioning semantics such as last_updated where relevant."
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "I have an EV charging platform using OCPI. A customer was charged €12.37 for a session. The tariff is €0.45/kWh plus €0.05/minute after 30 minutes, with a €2 parking fee after 10 minutes when charging has finished. Our developer says we can calculate every CDR with energy_kwh * energy_price and then add VAT. Is that approach correct? Give me the architecture and testing strategy for the billing calculation.",
+      "expected_output": "The answer should reject the assumption that charging cost can generally be calculated as energy multiplied by a single price. It should explain that OCPI tariffs can contain multiple dimensions and conditions and that billing needs explicit handling of energy, time, parking time, tariff steps, boundaries, timezone, rounding, minimums/maximums, and tax/VAT where applicable. It should recommend decimal-safe monetary arithmetic and describe a deterministic, testable tariff engine with boundary-condition tests.",
+      "assertions": [
+        "The output explicitly rejects energy_kwh multiplied by a single energy price as a universally valid CDR calculation.",
+        "The output identifies energy, time, and parking time as potentially independent tariff dimensions.",
+        "The output discusses tariff boundaries such as the 10-minute and 30-minute thresholds.",
+        "The output addresses rounding and decimal-safe monetary arithmetic.",
+        "The output separates tariff calculation from VAT/tax handling.",
+        "The output proposes deterministic tests for tariff boundary conditions.",
+        "The output does not invent unsupported OCPI tariff fields or claim that the supplied tariff necessarily maps to a specific protocol field without qualification."
+      ]
+    },
+    {
+        "id": 4,
+        "prompt": "We're integrating an unknown CPO. They say they support OCPI and want us to implement their custom endpoint POST /ocpi/2.2.1/emsp/commands/START_CHARGING with an X-CPO-Token header and a response containing {\"status\":\"STARTED\"}. Can you tell me exactly which OCPI specification fields and HTTP headers we need to implement, and whether the STARTED response means the vehicle is charging?",
+        "expected_output": "The answer should refuse to treat the vendor-provided endpoint, header, and response structure as standard OCPI without verification. It should distinguish standard behavior from vendor-specific behavior, explicitly state that the exact specification must be checked before making normative claims, and explain that an accepted command does not necessarily prove that physical charging has started.",
+        "assertions": [
+            "The output does not present the supplied custom endpoint as standard OCPI without verification.",
+            "The output does not invent or validate X-CPO-Token as a standard OCPI header.",
+            "The output distinguishes vendor-specific behavior from protocol-standard behavior.",
+            "The output recommends verifying the official OCPI specification before making normative claims.",
+            "The output does not equate a command response of STARTED with proof that physical charging has started."
+        ]
+    }
+  ]
+}
