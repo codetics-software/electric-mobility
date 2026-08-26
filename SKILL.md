@@ -1,761 +1,2179 @@
 ---
 name: electric-mobility
 description: >
-  Electric mobility software engineering skill covering OCPI, OCPP,
-  EV charging infrastructure, CPO/eMSP systems, roaming, CSMS,
-  charging sessions, CDRs, tariffs, smart charging, and IRVE.
+  Expert electric-mobility software engineering skill for EV charging,
+  OCPI, OCPP, CPO/eMSP platforms, CSMS, EVSEs, roaming, charging sessions,
+  CDRs, tariffs, authorization, reservations, smart charging, ISO 15118,
+  V2G, IRVE, charging infrastructure, interoperability, debugging,
+  architecture, implementation, and testing. Use this skill whenever a
+  task involves electric-vehicle charging software or charging protocols.
 license: MIT
 metadata:
   author: Codetics
   repository: https://github.com/codetics-software/electric-mobility
-  topics: ocpi, ocpp, electric-mobility, ev-charging, cpo, emsp, csms
+  topics: ocpi, ocpp, electric-mobility, ev-charging, cpo, emsp, csms, evse, roaming
 ---
 
-# Electric Mobility Skill — Codetics
-
-> **Trigger this skill** whenever a task involves OCPI, OCPP, EV charging infrastructure, CPO/eMSP systems, roaming, charge sessions, CDRs, tariffs, smart charging, or any electric mobility protocol.
-
----
-
-## 1. Ecosystem Overview
-
-Electric mobility software sits at the intersection of three protocol layers:
-
-```
-EV Driver  ←→  eMSP (app/card)  ←→  [OCPI]  ←→  CPO backend  ←→  [OCPP]  ←→  Charge Point
-```
-
-### Actors & Roles
-
-| Abbreviation | Full name | What they do |
-|---|---|---|
-| **CPO** | Charge Point Operator | Owns and operates charge points. Sends Locations, Sessions, CDRs. Receives Tokens and Commands. |
-| **eMSP** | e-Mobility Service Provider | Issues credentials (RFID/app) to EV drivers. Receives Locations, Sessions, CDRs. Sends Tokens. |
-| **Hub** | Roaming Hub | Routes OCPI messages between multiple CPOs and eMSPs (e.g. Gireve, Hubject, EVRoaming). |
-| **NSP** | Navigation Service Provider | Consumes Location data only (maps, route planners). |
-| **NAP** | National Access Point | National database of public charge points (e.g. France's national registry). |
-| **SCSP** | Smart Charging Service Provider | Sends ChargingProfiles to CPOs to shape load. Aggregator / energy broker. |
-| **EVSE** | Electric Vehicle Supply Equipment | One charging outlet. Can charge one EV at a time. Has one or more connectors. |
-
-### Physical Hierarchy
-
-```
-Location (site, address)
-  └─ EVSE (one power supply unit, one session at a time)
-       └─ Connector (socket or cable, e.g. CCS, CHAdeMO, Type 2)
-```
-
-**OCPI** models this hierarchy directly. **OCPP** models it as ChargePoint → Connector (OCPP 1.x) or ChargingStation → EVSE → Connector (OCPP 2.x).
-
----
-
-## 2. OCPI — Open Charge Point Interface
-
-**Purpose:** Backend-to-backend roaming between CPO systems and eMSP systems.  
-**Transport:** HTTPS REST, JSON, token-based auth (Bearer token in Authorization header, Base64-encoded since 2.2).  
-**Current versions:** 2.1.1 (widely deployed), 2.2.1 (standard), 2.2.1-d2 (clarified docs, same protocol).
-
-### 2.1 Architecture Topologies
-
-**Peer-to-peer (bilateral):** CPO platform connects directly to eMSP platform.
-
-**Hub topology:** All platforms connect to a Hub; Hub routes messages. Introduced in OCPI 2.2. Hub uses `OCPI-to-party-id` / `OCPI-from-party-id` routing headers.
-
-**Platform model:** A single OCPI platform may serve multiple CPO or eMSP roles (multi-tenant). Each role is identified by `country_code` + `party_id`.
-
-### 2.2 Authentication & Registration
-
-Every OCPI request carries:
-```
-Authorization: Token <base64-encoded-credentials-token>
-```
-
-**Registration sequence (3-token handshake):**
-1. Out-of-band: Receiver creates `CREDENTIALS_TOKEN_A` and shares it with Sender.
-2. Sender GETs `/ocpi/versions` and `/ocpi/2.2.1/` (version details) using `TOKEN_A`.
-3. Sender POSTs to `/ocpi/2.2.1/credentials` with `TOKEN_B` (its new token for receiver to use).
-4. Receiver stores `TOKEN_B`, generates `TOKEN_C`, returns it in the POST response.
-5. Sender now uses `TOKEN_C` for all future requests. `TOKEN_A` is discarded.
-
-**Update credentials:** PUT to credentials endpoint (same version or new version).  
-**Unregister:** DELETE to credentials endpoint.
-
-### 2.3 Transport Conventions
-
-**Response envelope:**
-```json
-{
-  "data": { ... },
-  "status_code": 1000,
-  "status_message": "Success",
-  "timestamp": "2024-01-15T10:30:00Z"
-}
-```
-
-**Status code ranges:**
-- `1xxx` Success (1000 = generic success)
-- `2xxx` Client error (2001 = invalid params, 2003 = unknown Location, 2004 = unknown Token)
-- `3xxx` Server error (3001 = cannot reach client API, 3002 = unsupported version, 3003 = required endpoints unavailable)
-
-**Pagination:** All list GETs support `date_from`, `date_to`, `offset`, `limit`. Response headers: `X-Total-Count`, `X-Limit`, `Link` (next page URL).
-
-**Push vs Pull:**
-- **Push** (preferred): Data owner proactively PUTs/PATCHes to receiver. Low latency.
-- **Pull** (required): Receiver GETs from sender. Used for initial sync / recovery after downtime.
-
-**Client Owned Objects:** In most OCPI modules, the **sender** is the data owner and controls the object's identity (URL). The receiver stores it at the URL dictated by the sender.
-
-**DateTime format:** ISO 8601 / RFC 3339 in UTC. `2024-01-15T10:30:00Z`. No timezone offset — always UTC.
-
-**snake_case everywhere.** All JSON field names are lowercase snake_case.
-
-### 2.4 OCPI Modules
-
-#### Credentials (Configuration)
-Both sides implement. Required. See §2.2 above.
-
-#### Versions (Configuration)
-```
-GET /ocpi/versions           → list of supported versions + URL per version
-GET /ocpi/2.2.1/             → list of endpoints for this version
-```
-
-#### Locations (Functional — CPO is Sender, eMSP/NSP/NAP receive)
-
-**Hierarchy:** Location → EVSE[] → Connector[]
-
-**Key fields:**
-- `id` (CiString 36) — Location identifier within the CPO
-- `evse_id` — eMI3 format: `{country}{CPO_ID}*E{local_id}` e.g. `FR*GFX*E12345`
-- `status`: AVAILABLE, CHARGING, BLOCKED, OUTOFORDER, PLANNED, REMOVED, RESERVED, UNKNOWN
-- `capabilities`: CHARGING_PREFERENCES_CAPABLE, REMOTE_START_STOP_CAPABLE, RESERVABLE, etc.
-- Connectors: `standard` (IEC_62196_T2, CHADEMO, IEC_62196_T2_COMBO…), `format` (CABLE/SOCKET), `power_type` (AC_1_PHASE, AC_3_PHASE, DC), `max_voltage`, `max_amperage`, `max_electric_power`
-
-**Delete EVSE:** Set `status: REMOVED` and PUT/PATCH. Locations cannot be fully deleted (Sessions/CDRs reference them).
-
-**Push:** CPO PUTs full object, or PATCHes partial changes. Updating a Connector must also bump `last_updated` on its EVSE and Location (cascade).
-
-#### Sessions (Functional — CPO is Sender)
-
-**Lifecycle states:** PENDING → ACTIVE → COMPLETED (no deletion).
-
-**Key fields:**
-- `id` — CPO-assigned, unique per CPO
-- `start_date_time`, `end_date_time` (set when COMPLETED)
-- `kwh` — energy delivered so far
-- `cdr_token` — identifies the charging driver (RFID uid, APP_USER uid, etc.)
-- `auth_method`: WHITELIST, OCPI, COMMAND, APP_IDENTIFIER
-- `location_id`, `evse_uid`, `connector_id`
-- `currency`, `total_cost` (updates during session)
-- `charging_periods[]` — time-sliced billing periods, each with `dimensions[]`
-- `status`: PENDING, ACTIVE, COMPLETED
-
-**Reservation:** Session starts with `status: RESERVED` when a RESERVE_NOW command is executed.
-
-**Charging Preferences (smart charging input from driver):**
-```
-PUT {sessions_url}/{session_id}/charging_preferences
-```
-Body: `ChargingPreferences { profile_type, departure_time, energy_need, discharge_allowed }`
-
-#### CDRs — Charge Detail Records (Functional — CPO is Sender)
-
-The **only billing-relevant object**. Sent after session ends.
-
-**Key rules:**
-- Cannot be modified once sent.
-- **Credit CDR**: To correct an error, send a new CDR with `credit: true` and `credit_reference_id` pointing to original CDR id. Values in `total_cost` are negative.
-- CDRs may reference Locations not published via OCPI (e.g. home chargers).
-
-**Key fields:**
-- `cdr_token` — who charged
-- `cdr_location` — snapshot of location at time of session (Location, EVSE, Connector identifiers + connector specs)
-- `auth_method`, `authorization_reference`
-- `tariffs[]` — snapshot of tariff(s) applied
-- `charging_periods[]` — dimension-based billing breakdown
-- `total_cost` (excl_vat + incl_vat), `total_energy` (kWh), `total_time` (hours)
-- `total_fixed_cost`, `total_energy_cost`, `total_time_cost`, `total_parking_time`, `total_parking_cost`
-- `signed_data` — Eichrecht / calibration law support
-
-#### Tokens (Functional — eMSP is Sender, CPO receives)
-
-**Types:** RFID, APP_USER, OTHER, AD_HOC_USER.
-
-**Whitelist modes:**
-- `ALWAYS` — CPO authorizes from local cache, no real-time call to eMSP
-- `ALLOWED` — CPO may authorize from cache or real-time
-- `ALLOWED_OFFLINE` — use cache when offline, real-time when online
-- `NEVER` — CPO must call eMSP real-time for every authorization
-
-**Real-time authorization:**
-```
-POST {emsp_tokens_url}/{country_code}/{party_id}/{token_uid}/authorize
-```
-Optional body: `LocationReferences` (specific Location/EVSE). Response: `AuthorizationInfo { allowed, location, authorization_reference, info }`.
-
-**Invalidate (not delete):** Send Token with `valid: false`.
-
-#### Tariffs (Functional — CPO is Sender)
-
-Tariffs are attached to Connectors. One Connector can have multiple Tariffs (one per ProfileType for smart charging).
-
-**Tariff structure:**
-```json
-{
-  "elements": [
-    {
-      "price_components": [
-        { "type": "FLAT", "price": 0.50, "vat": 20, "step_size": 1 },
-        { "type": "ENERGY", "price": 0.25, "vat": 20, "step_size": 1 },
-        { "type": "TIME", "price": 2.00, "vat": 20, "step_size": 300 },
-        { "type": "PARKING_TIME", "price": 5.00, "vat": 10, "step_size": 300 }
-      ],
-      "restrictions": {
-        "start_time": "08:00",
-        "end_time": "18:00",
-        "day_of_week": ["MONDAY","TUESDAY","WEDNESDAY","THURSDAY","FRIDAY"],
-        "min_current": 32.0,
-        "max_current": 32.0,
-        "min_power": 0,
-        "max_power": 22000,
-        "min_duration": 0,
-        "max_duration": 3600
-      }
-    }
-  ],
-  "min_price": { "excl_vat": 0.50 },
-  "max_price": { "excl_vat": 25.00 }
-}
-```
-
-**Price component types:** FLAT (session start fee), ENERGY (per kWh), TIME (per hour while charging), PARKING_TIME (per hour after charging ends, cable still connected).
-
-**`step_size`:** Billing granularity in Wh (ENERGY), seconds (TIME/PARKING_TIME), or 1 (FLAT).
-
-**Tariff types (OCPI 2.2+):** AD_HOC_PAYMENT, PROFILE_CHEAP, PROFILE_FAST, PROFILE_GREEN, REGULAR.
-
-#### Commands (Functional — eMSP is Sender, CPO receives)
-
-**Asynchronous two-step flow:**
-1. eMSP POSTs command to CPO → CPO responds immediately with `CommandResponse { result, timeout, message }` (ACCEPTED/NOT_SUPPORTED/REJECTED/UNKNOWN_SESSION etc.)
-2. CPO sends command via OCPP to Charge Point, then POSTs result back to eMSP's `response_url`.
-
-**Command types:**
-
-| Command | Purpose |
-|---|---|
-| `CANCEL_RESERVATION` | Cancel a previously made reservation |
-| `RESERVE_NOW` | Reserve an EVSE for a Token before arriving |
-| `START_SESSION` | Remotely start a charging session |
-| `STOP_SESSION` | Remotely stop an ongoing session |
-| `UNLOCK_CONNECTOR` | Unlock connector (use with caution) |
-
-**StartSession body:**
-```json
-{
-  "response_url": "https://emsp.example.com/commands/result/abc123",
-  "token": { ... },
-  "location_id": "LOC1",
-  "evse_uid": "3256",
-  "connector_id": "1",
-  "authorization_reference": "optional-ref"
-}
-```
-
-**CPO-initiated cancel:** For RESERVE_NOW, CPO can call Sender (eMSP) with a CANCEL_RESERVATION at the URL given in the original command.
-
-#### ChargingProfiles (Functional — SCSP/eMSP is Sender, CPO receives)
-
-Used by eMSPs or SCSPs (aggregators) to shape charging speed for an ongoing session.
-
-**Asynchronous flow** (same pattern as Commands):
-1. Sender PUTs ChargingProfile to CPO for a `session_id`.
-2. CPO forwards to Charge Point via OCPP.
-3. CPO POSTs result to `response_url`.
-4. CPO continues to update Sender via PUT when ActiveChargingProfile changes.
-
-**ChargingProfile object:**
-```json
-{
-  "start_date_time": "2024-01-15T10:00:00Z",
-  "duration": 3600,
-  "charging_rate_unit": "W",
-  "charging_profile_period": [
-    { "start_period": 0, "limit": 11000 },
-    { "start_period": 1800, "limit": 7400 }
-  ],
-  "min_charging_rate": 1400
-}
-```
-
-**Topologies:**
-- eMSP generates profiles directly → sends to CPO
-- eMSP delegates to SCSP → SCSP sends via eMSP to CPO
-- CPO delegates to SCSP → SCSP sends directly to CPO (eMSP unaware)
-
-#### Hub Client Info (Configuration — Hub is Sender)
-
-Only relevant when connecting via a Hub. Informs connected parties of other parties' connection status: CONNECTED, OFFLINE, PLANNED, SUSPENDED.
-
-**Key rule:** When another party goes OFFLINE, do NOT queue Push messages. The other party must GET to re-sync when it comes back online.
-
-### 2.5 OCPI Message Routing (Hub scenarios)
-
-When using a Hub, functional module requests include routing headers:
-```
-OCPI-to-country-code: NL
-OCPI-to-party-id: TNM
-OCPI-from-country-code: BE
-OCPI-from-party-id: BEC
-OCPI-correlation-id: unique-id-123
-```
-
-**Broadcast Push:** CPO sends one PUT to Hub with `X-Request-ID`; Hub fans out to all connected eMSPs. Hub responds immediately, delivers asynchronously.
-
-**Open Routing Request:** Sender asks Hub to route GET to the correct owner without specifying `to` party — Hub resolves.
+# Electric Mobility — Agent Skill
+
+This skill provides protocol-aware engineering knowledge and workflows for
+electric-mobility software.
+
+It is intended for agents implementing, reviewing, debugging, designing,
+testing, or explaining:
+
+- EV charging infrastructure
+- CPO platforms
+- eMSP platforms
+- CSMS platforms
+- EVSEs and charging stations
+- OCPI
+- OCPP
+- roaming
+- charging sessions
+- CDRs
+- tariffs and billing
+- authorization
+- reservations
+- remote charging commands
+- smart charging
+- ISO 15118
+- Plug & Charge
+- V2G / V2X
+- IRVE
+- charging infrastructure APIs
+- interoperability between charging platforms
+
+The objective is not to memorize every protocol field.
+
+The objective is to make the agent reason correctly about:
+
+1. protocol boundaries;
+2. protocol versions;
+3. actor roles;
+4. data ownership;
+5. state machines;
+6. asynchronous operations;
+7. distributed-system failures;
+8. interoperability;
+9. security;
+10. billing and energy measurement.
 
 ---
 
-## 3. OCPP — Open Charge Point Protocol
+# 1. Mandatory Agent Rules
 
-**Purpose:** Communication between a Charge Point (hardware) and a CSMS (Central System / Management System).  
-**Transport:** WebSocket (OCPP-J / JSON) or SOAP (OCPP-S, legacy 1.6).  
-**Versions:** 1.6 (widely deployed), 2.0.1 (modern, current standard), 2.1 (newest, adds V2G/bidirectional).
+Before implementing or explaining anything, determine:
 
-### 3.1 Connection Model
+```text
+What protocol?
+What version?
+Which actor?
+Who owns the data?
+Who initiates the operation?
+What is the expected state transition?
+Is the operation synchronous or asynchronous?
+What happens if the remote system is unavailable?
+How is the operation correlated?
+````
 
-```
-Charge Point ←─── WebSocket ───→ CSMS (Central System)
-```
+Never silently assume a protocol version.
 
-- Charge Point initiates WebSocket connection to CSMS.
-- Both directions: Charge Point sends requests; CSMS also sends requests (commands).
-- Message format: JSON array `[MessageTypeId, UniqueId, Action, Payload]`
-  - `2` = Request, `3` = Response, `4` = Error
+If the version is unknown and materially affects the answer:
 
-```json
-// Request (Charge Point → CSMS)
-[2, "19223201", "BootNotification", {
-  "chargePointVendor": "VendorX",
-  "chargePointModel": "ModelY"
-}]
-
-// Response (CSMS → Charge Point)
-[3, "19223201", {
-  "currentTime": "2024-01-15T10:00:00Z",
-  "interval": 300,
-  "status": "Accepted"
-}]
+```text
+State the assumption explicitly.
+Proceed only where the behavior is version-independent.
+Identify what must be verified.
 ```
 
-### 3.2 OCPP 1.6 — Core Messages
+Never invent:
 
-#### Charge Point → CSMS (Initiated by Charge Point)
+* protocol fields;
+* endpoints;
+* enum values;
+* message names;
+* headers;
+* state transitions;
+* authentication mechanisms;
+* capabilities;
+* version-specific behavior.
 
-| Action | When | Key fields |
-|---|---|---|
-| `BootNotification` | On startup/reboot | `chargePointVendor`, `chargePointModel`, `firmwareVersion`, `iccid`, `imsi` |
-| `Heartbeat` | Periodic keep-alive | _(no body)_ |
-| `StatusNotification` | Connector state changes | `connectorId`, `status`, `errorCode`, `timestamp` |
-| `Authorize` | RFID presented | `idTag` → response: `idTagInfo { status, expiryDate, parentIdTag }` |
-| `StartTransaction` | Session starts | `connectorId`, `idTag`, `meterStart` (Wh), `timestamp`, `reservationId?` |
-| `StopTransaction` | Session ends | `transactionId`, `meterStop` (Wh), `timestamp`, `reason`, `transactionData[]` |
-| `MeterValues` | Periodic meter readings | `connectorId`, `transactionId`, `meterValue[{ timestamp, sampledValue[] }]` |
-| `FirmwareStatusNotification` | OTA update progress | `status` (Downloading, Downloaded, Installing, Installed, Failed) |
-| `DiagnosticsStatusNotification` | Diagnostics upload | `status` |
+If exact protocol behavior matters, verify the official specification before making a normative claim.
 
-**StatusNotification connector states (OCPP 1.6):**  
-Available, Preparing, Charging, SuspendedEVSE, SuspendedEV, Finishing, Reserved, Unavailable, Faulted
+Clearly distinguish:
 
-**Measurands (MeterValues):** `Energy.Active.Import.Register` (primary kWh), `Power.Active.Import` (W), `Current.Import` (A), `Voltage` (V), `SoC` (%), `Temperature`.
-
-#### CSMS → Charge Point (Commands)
-
-| Action | Purpose | Key fields |
-|---|---|---|
-| `RemoteStartTransaction` | Start session remotely | `idTag`, `connectorId?`, `chargingProfile?` |
-| `RemoteStopTransaction` | Stop ongoing session | `transactionId` |
-| `ReserveNow` | Reserve a connector | `connectorId`, `expiryDate`, `idTag`, `reservationId` |
-| `CancelReservation` | Cancel reservation | `reservationId` |
-| `ChangeAvailability` | Take connector in/out of service | `connectorId`, `type` (Operative/Inoperative) |
-| `ChangeConfiguration` | Set a config key | `key`, `value` |
-| `GetConfiguration` | Read config keys | `key[]?` |
-| `ClearCache` | Clear authorization cache | _(no body)_ |
-| `Reset` | Reboot charge point | `type` (Hard/Soft) |
-| `UnlockConnector` | Unlock connector | `connectorId` |
-| `SetChargingProfile` | Apply smart charging schedule | `connectorId`, `csChargingProfiles` |
-| `ClearChargingProfile` | Remove charging profile | `id?`, `connectorId?`, `chargingProfilePurpose?`, `stackLevel?` |
-| `GetCompositeSchedule` | Get effective schedule | `connectorId`, `duration`, `chargingRateUnit?` |
-| `TriggerMessage` | Request a notification | `requestedMessage` (BootNotification, Heartbeat, MeterValues, etc.) |
-| `SendLocalList` | Update authorization cache | `listVersion`, `updateType` (Full/Differential), `localAuthorizationList[]` |
-| `DataTransfer` | Vendor-specific data | `vendorId`, `messageId?`, `data?` |
-| `UpdateFirmware` | Trigger OTA update | `location` (URL), `retrieveDate` |
-| `GetDiagnostics` | Upload logs | `location` (URL), `startTime?`, `stopTime?` |
-
-### 3.3 OCPP 1.6 — Smart Charging
-
-**ChargingProfile structure:**
-```json
-{
-  "chargingProfileId": 1,
-  "stackLevel": 0,
-  "chargingProfilePurpose": "TxProfile",
-  "chargingProfileKind": "Absolute",
-  "chargingSchedule": {
-    "chargingRateUnit": "W",
-    "chargingSchedulePeriod": [
-      { "startPeriod": 0, "limit": 11000 },
-      { "startPeriod": 3600, "limit": 7400 }
-    ],
-    "duration": 7200
-  }
-}
+```text
+STANDARD BEHAVIOR
+IMPLEMENTATION CHOICE
+VENDOR-SPECIFIC BEHAVIOR
+ARCHITECTURAL RECOMMENDATION
 ```
 
-**Profile purposes:**
-- `ChargePointMaxProfile` — overall site limit (stackLevel 0)
-- `TxDefaultProfile` — default per transaction
-- `TxProfile` — for a specific `transactionId`
+Never present an implementation convention as a protocol requirement.
 
-**Profile kinds:** `Absolute` (fixed times), `Recurring` (Daily/Weekly), `Relative` (seconds since session start).
+Never expose:
 
-**Resolution:** EVSE applies the minimum of all active profiles for each time period.
-
-### 3.4 OCPP 2.0.1 — Improvements over 1.6
-
-OCPP 2.0.1 introduces significant changes:
-
-**Device Model:** Variables instead of raw config keys. Structure: `Component { name, instance?, evse? } → Variable { name, instance? } → Attribute { type: Actual/Target/MinSet/MaxSet }`.
-
-**Transaction lifecycle changes:**
-- `TransactionEvent` replaces `StartTransaction`, `StopTransaction`, `MeterValues`
-- `eventType`: `Started`, `Updated`, `Ended`
-- `triggerReason`: `Authorized`, `CablePluggedIn`, `ChargingRateChanged`, `EVConnectTimeout`, `MeterValueClock`, `StopAuthorized`, etc.
-
-**Authorization improvements:**
-- `RequestStartTransaction` replaces `RemoteStartTransaction`
-- `IdToken` replaces `idTag`: `{ idToken, type: Central/eMAID/ISO14443/ISO15693/KeyCode/Local/MacAddress/NoAuthorization }`
-- `EMAID` (Electric Mobility Account ID) — ISO 15118 / Plug & Charge
-
-**Security:** Certificate-based security profiles, TLS client certificates, signed firmware.
-
-**ISO 15118 (PnC):** Plug & Charge via ISO 15118. EVSE reads vehicle certificate, no RFID needed. `AuthorizeRequest` can carry `15118CertificateHashData`.
-
-**OCPP 2.1 additions:** V2G (Vehicle-to-Grid), bidirectional charging (BPT), Dynamic Smart Charging (replaces static profiles), AFC (Automated Frequency Control), better PnC support.
-
-### 3.5 OCPP Architecture (2.0.1+)
-
-```
-ChargingStation (hardware unit)
-  └─ EVSE 1..n (independently operated supply)
-       └─ Connector 1..n (socket/cable)
-```
-
-A ChargingStation has one WebSocket connection to the CSMS. The CSMS identifies individual EVSEs and Connectors via `evse.id` and `evse.connectorId` in messages.
+* credentials;
+* OCPI tokens;
+* bearer tokens;
+* passwords;
+* private keys;
+* certificates;
+* customer data;
+* production endpoints containing secrets.
 
 ---
 
-## 4. Protocol Interaction Patterns
+# 2. Electric Mobility System Model
 
-### 4.1 Full Roaming Charge Session Flow
+A typical charging ecosystem looks like:
 
-```
-1. Sync: eMSP pushes Token to CPO (OCPI Tokens PUT)
-2. Driver arrives: presents RFID card
-3. CPO Authorize: check local token cache → hit → Accepted
-   (or: OCPI real-time Authorize POST to eMSP)
-4. OCPP StartTransaction: Charge Point → CSMS
-5. CSMS creates OCPI Session (status: ACTIVE), pushes to eMSP
-6. Charging: OCPP MeterValues flow, CSMS patches Session (kwh update)
-7. Driver stops: OCPP StopTransaction → CSMS
-8. CSMS finalizes OCPI Session (status: COMPLETED)
-9. CSMS creates and pushes OCPI CDR to eMSP
-10. eMSP bills the driver
-```
-
-### 4.2 Remote Start Flow (App-initiated)
-
-```
-1. Driver taps "Start" in eMSP app
-2. eMSP POSTs OCPI Commands/START_SESSION to CPO
-3. CPO responds: CommandResponse { result: ACCEPTED }
-4. CPO sends OCPP RemoteStartTransaction to Charge Point
-5. Charge Point responds OCPP: Accepted
-6. Driver plugs in (if not already)
-7. OCPP StartTransaction sent → CSMS
-8. CSMS creates OCPI Session, pushes to eMSP
-9. OCPP ChargingProfile result POSTed to eMSP response_url
-```
-
-### 4.3 Reservation Flow
-
-```
-1. eMSP POSTs OCPI RESERVE_NOW command to CPO
-2. CPO sends OCPP ReserveNow to Charge Point
-3. Charge Point: StatusNotification (status: Reserved)
-4. CPO creates OCPI Session (status: RESERVED), pushes to eMSP
-5. Driver arrives within timeout, authorizes → session becomes ACTIVE
-   (or timeout elapses → CancelReservation, Session COMPLETED with no energy)
+```text
+                    EV Driver
+                       |
+                       v
+                    eMSP
+                       |
+                     OCPI
+                       |
+                       v
+              CPO / Roaming Hub
+                       |
+                       v
+                      CSMS
+                       |
+                     OCPP
+                       |
+                       v
+              Charging Station
+                       |
+                      EVSE
+                       |
+                   Connector
+                       |
+                       v
+                       EV
 ```
 
-### 4.4 Smart Charging Flow (SCSP via eMSP)
+These layers have different responsibilities.
 
+## OCPI
+
+Backend-to-backend interoperability.
+
+Typical use:
+
+```text
+eMSP <---- OCPI ----> CPO
 ```
-1. Session starts → CPO pushes Session to eMSP
-2. eMSP forwards Session to SCSP
-3. SCSP calculates profile (grid signal, tariff, driver preference, departure time)
-4. SCSP PUTs ChargingProfile via eMSP to CPO
-5. CPO sends OCPP SetChargingProfile to Charge Point
-6. Charge Point ACKs → result POSTed to response_url
-7. Charge Point changes rate → StatusNotification / TransactionEvent → CSMS notifies SCSP of ActiveChargingProfile update
+
+OCPI commonly handles:
+
+* Locations
+* EVSEs
+* Connectors
+* Tokens
+* authorization
+* Sessions
+* CDRs
+* Tariffs
+* Commands
+* Charging Profiles
+* Credentials
+* Versions
+* roaming
+* hub routing
+
+## OCPP
+
+Charging-station-to-CSMS communication.
+
+Typical use:
+
+```text
+Charging Station <---- OCPP ----> CSMS
+```
+
+OCPP commonly handles:
+
+* station connectivity
+* authorization
+* charging transactions
+* status
+* meter values
+* remote commands
+* configuration
+* firmware
+* diagnostics
+* reservations
+* smart charging
+* security
+* device management
+
+## Critical distinction
+
+Do not say:
+
+```text
+OCPI controls the charger.
+```
+
+Prefer:
+
+```text
+OCPI expresses the business/interoperability operation.
+The CPO/CSMS translates that operation into station-level behavior,
+usually through OCPP.
+```
+
+Typical flow:
+
+```text
+eMSP
+  |
+  | OCPI START_SESSION
+  v
+CPO
+  |
+  | business validation
+  v
+CSMS
+  |
+  | OCPP operation
+  v
+Charging Station
 ```
 
 ---
 
-## 5. Data Model Reference
+# 3. Actors
 
-### 5.1 OCPI Core Objects
+## CPO
 
-**Location (CPO-owned):**
-```json
-{
-  "country_code": "FR", "party_id": "GFX",
-  "id": "LOC1", "publish": true,
-  "name": "Parking Gare du Nord",
-  "address": "18 Rue de Dunkerque", "city": "Paris",
-  "postal_code": "75010", "country": "FRA",
-  "coordinates": { "latitude": "48.881065", "longitude": "2.355108" },
-  "parking_type": "PARKING_GARAGE",
-  "evses": [ ... ],
-  "time_zone": "Europe/Paris",
-  "last_updated": "2024-01-15T10:00:00Z"
-}
+Charge Point Operator.
+
+Typically responsible for:
+
+* charging stations;
+* EVSE operational state;
+* charging sessions;
+* energy measurements;
+* tariffs;
+* CDR generation;
+* station management;
+* OCPP connectivity.
+
+## eMSP
+
+e-Mobility Service Provider.
+
+Typically responsible for:
+
+* driver accounts;
+* charging contracts;
+* charging tokens;
+* authorization;
+* driver applications;
+* roaming relationships.
+
+## CSMS
+
+Central System / Charging Station Management System.
+
+Responsible for communication and management of charging stations.
+
+The CSMS may be part of the CPO platform or a separate system.
+
+## Roaming Hub
+
+Routes interoperability traffic between multiple parties.
+
+A hub does not automatically become the owner of the underlying domain data.
+
+## EVSE
+
+Electric Vehicle Supply Equipment.
+
+Use EVSE and connector precisely.
+
+Conceptually:
+
+```text
+Location
+  └── EVSE
+        └── Connector
 ```
 
-**Session (CPO-owned):**
-```json
-{
-  "country_code": "FR", "party_id": "GFX",
-  "id": "SES-001",
-  "start_date_time": "2024-01-15T10:17:09Z",
-  "kwh": 12.5,
-  "cdr_token": {
-    "country_code": "DE", "party_id": "TNM",
-    "uid": "012345678", "type": "RFID",
-    "contract_id": "DE8ACC12E46L89"
-  },
-  "auth_method": "WHITELIST",
-  "location_id": "LOC1", "evse_uid": "EVSE-01", "connector_id": "1",
-  "currency": "EUR",
-  "total_cost": { "excl_vat": 3.125, "incl_vat": 3.75 },
-  "status": "ACTIVE",
-  "last_updated": "2024-01-15T11:00:00Z"
-}
-```
-
-**CDR (CPO-owned, immutable after POST):**
-```json
-{
-  "country_code": "FR", "party_id": "GFX",
-  "id": "CDR-001",
-  "start_date_time": "2024-01-15T10:17:09Z",
-  "end_date_time": "2024-01-15T12:05:22Z",
-  "cdr_token": { ... },
-  "auth_method": "WHITELIST",
-  "cdr_location": {
-    "id": "LOC1", "evse_uid": "EVSE-01", "evse_id": "FR*GFX*E001",
-    "connector_id": "1",
-    "connector_standard": "IEC_62196_T2",
-    "connector_format": "SOCKET",
-    "connector_power_type": "AC_3_PHASE"
-  },
-  "currency": "EUR",
-  "tariffs": [ { ... tariff snapshot ... } ],
-  "charging_periods": [
-    {
-      "start_date_time": "2024-01-15T10:17:09Z",
-      "dimensions": [
-        { "type": "ENERGY", "volume": 12.5 },
-        { "type": "TIME", "volume": 1.804 }
-      ],
-      "tariff_id": "TARIFF-01"
-    }
-  ],
-  "total_cost": { "excl_vat": 3.25, "incl_vat": 3.90 },
-  "total_energy": 12.5,
-  "total_time": 1.804,
-  "last_updated": "2024-01-15T12:10:00Z"
-}
-```
-
-**Token (eMSP-owned):**
-```json
-{
-  "country_code": "DE", "party_id": "TNM",
-  "uid": "bdf21bce-fc97-11e8-8eb2-f2801f1b9fd1",
-  "type": "APP_USER",
-  "contract_id": "DE8ACC12E46L89",
-  "issuer": "TheNewMotion",
-  "valid": true,
-  "whitelist": "ALLOWED",
-  "last_updated": "2024-01-15T09:00:00Z"
-}
-```
-
-### 5.2 Identifiers
-
-**EVSE ID (eMI3):** `{country}{CPO_ID}*E{local_id}` e.g. `FR*GFX*E041503001`  
-**Contract ID (eMAID):** `{country}{eMSP_ID}{customer_id}` e.g. `DE8ACC12E46L89`  
-**Location ID:** CPO-local string (max 36 chars). Unique within a CPO's `country_code + party_id`.
-
-### 5.3 Connector Standards
-
-| Standard | Description | Typical use |
-|---|---|---|
-| `IEC_62196_T2` | Type 2 / Mennekes | AC Europe standard |
-| `IEC_62196_T2_COMBO` | CCS2 (CCS Combo 2) | DC fast charging Europe |
-| `CHADEMO` | CHAdeMO | DC, Japanese vehicles |
-| `IEC_62196_T1` | Type 1 / J1772 | AC, US/Japan |
-| `IEC_62196_T1_COMBO` | CCS1 | DC fast, US |
-| `TESLA_S` | Tesla proprietary | Tesla Supercharger (legacy) |
-| `GBT_AC` / `GBT_DC` | GB/T | China standard |
+Do not use "EVSE", "connector", "charge point", and "charging station" as interchangeable terms.
 
 ---
 
-## 6. Architecture Decisions for EV Software
+# 4. Protocol Version Awareness
 
-### 6.1 CSMS Architecture Patterns
+Always establish the exact version before implementing version-sensitive behavior.
 
-**Event-driven CSMS:**
-- Each Charge Point = one WebSocket connection = one actor/coroutine
-- OCPP messages are events; process them asynchronously
-- State machine per connector (Available → Preparing → Charging → Finishing → Available)
-- Idempotent handling: replay-safe on reconnect
+Relevant protocol generations include:
 
-**Scaling:**
-- Sticky sessions: a Charge Point must reconnect to the same CSMS node (or use distributed session state)
-- Message broker (Kafka, Pub/Sub) for fan-out: one OCPP event → multiple consumers (billing, monitoring, OCPI bridge)
-- Separate read/write paths: OCPP write path (low latency), reporting read path (analytics)
+```text
+OCPI:
+  2.1.1
+  2.2.1
+  2.3.0
 
-### 6.2 OCPI Service Patterns
+OCPP:
+  1.6
+  2.0.1
+  2.1
+```
 
-**Push with pull fallback:**
-- Always implement push for production; implement pull (GET with `date_from`) for recovery
-- Sync window: `date_to` of period N = `date_from` of period N+1 (no overlap, no gap)
+Older versions remain widely deployed.
 
-**Token cache strategy:**
-- Keep a local token cache; refresh via full pull on startup
-- Listen for push updates during operation
-- Real-time authorize when `whitelist = NEVER` or for new/unknown tokens
+Do not assume that the newest version is the version supported by a real-world integration.
 
-**CDR pipeline:**
-- OCPP StopTransaction → build CDR → POST to eMSP → store response URL for verification
-- Retry with exponential backoff
-- Credit CDR workflow: create negative CDR, reference original, then create corrected CDR
+When migrating between versions:
 
-**Multi-party platform:**
-- Each CPO/eMSP role gets its own `country_code + party_id` tuple
-- Credentials stored per counterparty connection (many-to-many)
-- Token DB keyed by `(country_code, party_id, uid, type)`
+```text
+DO NOT:
+rename messages mechanically.
 
-### 6.3 Common Pitfalls
+DO:
+map concepts and identify semantic differences.
+```
 
-**OCPI:**
-- `last_updated` must cascade: Connector update → EVSE update → Location update. Failure causes sync issues.
-- `date_from` is inclusive, `date_to` is exclusive. Off-by-one in sync windows causes duplicates or gaps.
-- Base64-encode the credentials token in the `Authorization` header (required since 2.2, often missed in 2.1.1 interop).
-- Never send Push to a party that is OFFLINE via Hub — they will miss it. They GET on reconnect.
-- CDRs are immutable — never PUT to update; issue a Credit CDR pair instead.
-- Pagination: always follow `Link: next` header until exhausted.
+For migration work, create an explicit mapping:
 
-**OCPP:**
-- Charge Points are often behind NAT/firewalls with unreliable connectivity. Design for reconnects.
-- `heartbeatInterval` in BootNotification response controls frequency — tune per network condition.
-- `connectorId: 0` in OCPP 1.6 refers to the entire Charge Point (e.g., for `ChangeAvailability` of all connectors).
-- MeterValues `Energy.Active.Import.Register` is cumulative (Wh total) — compute delta for kWh per session.
-- OCPP 1.x has no EVSE concept: map one "virtual EVSE" per connector for OCPI compatibility.
-- `TxProfile` in smart charging is tied to `transactionId`. Profile expires when transaction ends.
-- Firmware updates: schedule off-peak. `UpdateFirmware` only triggers download; actual install requires Reset.
-
-### 6.4 Security Considerations
-
-- Use TLS 1.2+ for all WebSocket connections (OCPP) and HTTPS (OCPI).
-- OCPP Security Profile 3: client-side TLS certificates for mutual authentication (OCPP 2.0.1+).
-- Rotate OCPI credentials tokens regularly (recommended monthly minimum).
-- Validate `idTag` / `idToken` before allowing session start — don't trust the Charge Point's local cache without verification policies.
-- ISO 15118 / Plug & Charge: requires PKI infrastructure (V2G Root CA, contract certificates, provisioning certificates).
-- Rate-limit OCPI endpoints to prevent abuse; document limits in `ChargingProfiles` (`TOO_OFTEN` response).
+```text
+Old concept
+    ->
+New concept
+    ->
+Semantic differences
+    ->
+Compatibility concerns
+```
 
 ---
 
-## 7. French Market Specifics
+# 5. OCPI
 
-- **AFIREV** issues CPO and eMSP operator IDs for France (prefix `FR`). Required for eMI3-compliant EVSE IDs and Contract IDs.
-- French EVSE IDs: `FR*{CPO_ID}*E{local}` (e.g. `FR*GFX*E041503001`)
-- **IRVE Decree**: Public charging stations in France must publish data to the national NAP (data.gouv.fr). Data format: schema IRVE (based on OCPI Location structure).
-- **Calibration law / Eichrecht**: Not legally required in France (unlike Germany), but `signed_data` in CDRs is good practice for dispute resolution.
-- **Belib' / Gireve / Freshmile** are major French roaming hubs connecting CPOs and eMSPs via OCPI.
-- **TRV (Tarif Réglementé de Vente)**: EDF regulated tariff — some MSPs tie night-rate charging to this.
+## 5.1 Purpose
+
+OCPI is primarily a backend interoperability protocol.
+
+Typical architecture:
+
+```text
+CPO <---- OCPI ----> eMSP
+```
+
+or:
+
+```text
+CPO <---- OCPI ----> Hub <---- OCPI ----> eMSP
+```
+
+OCPI commonly uses HTTP/REST and JSON.
 
 ---
 
-## 8. Quick Reference
+# 6. OCPI Roles and Ownership
 
-### OCPI Module Summary
+For every OCPI module, determine:
 
-| Module | Data Owner | CPO role | eMSP role | Key operations |
-|---|---|---|---|---|
-| Credentials | Both | Both | Both | GET, POST, PUT, DELETE |
-| Versions | Both | Both | Both | GET |
-| Locations | CPO | Sender | Receiver | Push PUT/PATCH, Pull GET |
-| Sessions | CPO | Sender | Receiver | Push PUT/PATCH, PUT ChargingPreferences |
-| CDRs | CPO | Sender | Receiver | Push POST, Pull GET |
-| Tokens | eMSP | Receiver | Sender | Push PUT/PATCH, POST Authorize |
-| Tariffs | CPO | Sender | Receiver | Push PUT/DELETE, Pull GET |
-| Commands | — | Receiver | Sender | POST (async), callback POST |
-| ChargingProfiles | — | Receiver | Sender (or SCSP) | PUT (async), callback POST |
-| HubClientInfo | Hub | Receiver | Receiver | Push PUT, Pull GET |
-
-### OCPP 1.6 Message Quick Reference
-
-| Direction | Message | Trigger |
-|---|---|---|
-| CP→CS | BootNotification | Startup / reset |
-| CP→CS | Heartbeat | Timer (per BootNotification interval) |
-| CP→CS | StatusNotification | State change |
-| CP→CS | Authorize | RFID tap (when not whitelisted) |
-| CP→CS | StartTransaction | Session start |
-| CP→CS | MeterValues | Periodic / transaction begin/end |
-| CP→CS | StopTransaction | Session end |
-| CS→CP | RemoteStartTransaction | App start |
-| CS→CP | RemoteStopTransaction | App stop |
-| CS→CP | SetChargingProfile | Smart charging |
-| CS→CP | ChangeAvailability | Maintenance |
-| CS→CP | Reset | Reboot |
-| CS→CP | UpdateFirmware | OTA |
-
-### Key URL Patterns (OCPI 2.2.1)
-
+```text
+Who is the sender?
+Who is the receiver?
+Who owns the object?
+Who creates it?
+Who modifies it?
+Who consumes it?
+How is it synchronized?
 ```
-GET  /ocpi/versions
-GET  /ocpi/2.2.1/
-GET  /ocpi/2.2.1/credentials
-POST /ocpi/2.2.1/credentials          (register)
-PUT  /ocpi/2.2.1/credentials          (update)
-GET  /ocpi/cpo/2.2.1/locations
-GET  /ocpi/cpo/2.2.1/locations/{location_id}
-GET  /ocpi/cpo/2.2.1/locations/{location_id}/{evse_uid}
-PUT  /ocpi/emsp/2.2.1/locations/{country_code}/{party_id}/{location_id}/{evse_uid}
-GET  /ocpi/cpo/2.2.1/sessions?date_from=...
-PUT  /ocpi/emsp/2.2.1/sessions/{country_code}/{party_id}/{session_id}
-PUT  /ocpi/cpo/2.2.1/sessions/{session_id}/charging_preferences
-GET  /ocpi/cpo/2.2.1/cdrs
-POST /ocpi/emsp/2.2.1/cdrs
-GET  /ocpi/cpo/2.2.1/tokens
-PUT  /ocpi/cpo/2.2.1/tokens/{country_code}/{party_id}/{token_uid}
-POST /ocpi/emsp/2.2.1/tokens/{country_code}/{party_id}/{token_uid}/authorize
-GET  /ocpi/cpo/2.2.1/tariffs
-PUT  /ocpi/emsp/2.2.1/tariffs/{country_code}/{party_id}/{tariff_id}
-POST /ocpi/cpo/2.2.1/commands/{command_type}
-PUT  /ocpi/cpo/2.2.1/chargingprofiles/{session_id}
+
+Do not infer ownership from the receiving database.
+
+For example:
+
+```text
+CPO
+ |
+ | Locations
+ v
+eMSP
 ```
+
+The eMSP stores a copy.
+
+That does not make the eMSP the owner of the Location.
+
+---
+
+# 7. OCPI Credentials and Versions
+
+The connection lifecycle must be treated as protocol configuration.
+
+Conceptually:
+
+```text
+Party A
+  |
+  | credentials token
+  v
+Party B
+  |
+  | versions discovery
+  v
+Version endpoint
+  |
+  | credentials exchange
+  v
+Operational connection
+```
+
+Credentials are security-sensitive.
+
+Never:
+
+```text
+log credentials
+store credentials in source code
+return credentials in error messages
+place credentials in telemetry
+```
+
+Use appropriate secret storage.
+
+---
+
+# 8. OCPI Data Synchronization
+
+OCPI integrations must support both initial synchronization and incremental synchronization.
+
+Typical model:
+
+```text
+Initial synchronization
+        |
+        v
+Pull existing objects
+        |
+        v
+Persist state
+        |
+        v
+Receive push updates
+        |
+        v
+Maintain synchronized state
+```
+
+If the receiver goes offline:
+
+```text
+Receiver offline
+      |
+      v
+Missed updates
+      |
+      v
+Connection restored
+      |
+      v
+Pull / reconciliation
+      |
+      v
+Synchronized state
+```
+
+Do not assume that a receiver being offline means every event must be queued indefinitely.
+
+The correct recovery mechanism depends on the protocol module and integration architecture.
+
+---
+
+# 9. OCPI Locations
+
+Typical ownership:
+
+```text
+CPO -> Locations -> eMSP / NSP / NAP
+```
+
+Hierarchy:
+
+```text
+Location
+  └── EVSE[]
+        └── Connector[]
+```
+
+A Location represents a physical charging site.
+
+An EVSE represents a charging supply unit.
+
+A Connector represents a physical charging interface.
+
+Dynamic operational state must be distinguished from static infrastructure information.
+
+Examples of dynamic information include:
+
+```text
+AVAILABLE
+CHARGING
+BLOCKED
+OUTOFORDER
+PLANNED
+REMOVED
+RESERVED
+UNKNOWN
+```
+
+Do not treat removal as equivalent to deleting historical data.
+
+Historical Sessions and CDRs may still reference the infrastructure.
+
+When synchronizing nested objects, respect the version-specific `last_updated` semantics.
+
+---
+
+# 10. OCPI Tokens and Authorization
+
+Keep these concepts separate:
+
+```text
+Token identity
+Token validity
+Authorization request
+Authorization result
+Authorization reference
+Charging session
+```
+
+A valid token does not necessarily mean:
+
+```text
+the charging attempt is authorized.
+```
+
+Authorization may depend on:
+
+* roaming;
+* location;
+* EVSE;
+* contract;
+* token status;
+* real-time authorization;
+* offline authorization rules;
+* CPO policy.
+
+A robust implementation should be able to correlate:
+
+```text
+Token
+  |
+  v
+Authorization
+  |
+  v
+Authorization Reference
+  |
+  v
+Session
+  |
+  v
+CDR
+```
+
+---
+
+# 11. OCPI Sessions
+
+A Session represents charging activity.
+
+Typical lifecycle:
+
+```text
+PENDING
+   |
+   v
+ACTIVE
+   |
+   v
+COMPLETED
+```
+
+The exact lifecycle must always be checked against the selected OCPI version.
+
+A Session is not the same thing as a CDR.
+
+A useful conceptual model is:
+
+```text
+Authorization
+      |
+      v
+Charging Session
+      |
+      +---- meter / energy observations
+      |
+      +---- charging periods
+      |
+      v
+Completed Session
+      |
+      v
+CDR
+```
+
+Do not create billing conclusions from incomplete operational state.
+
+A session may be active while:
+
+```text
+energy = 0
+```
+
+because:
+
+* charging has not started;
+* the vehicle paused charging;
+* the station is waiting;
+* a power limit is active;
+* the vehicle is not drawing power;
+* meter data has not yet arrived.
+
+---
+
+# 12. OCPI CDRs
+
+CDRs are billing-oriented records.
+
+Treat them as auditable financial data.
+
+Important properties:
+
+```text
+immutable historical record
+idempotent processing
+traceable origin
+reconcilable billing evidence
+```
+
+Do not silently mutate an already processed historical CDR.
+
+When the protocol supports correction/credit mechanisms, use them instead.
+
+A CDR can contain:
+
+```text
+authorization information
+location snapshot
+EVSE information
+connector information
+tariff snapshot
+charging periods
+energy
+duration
+parking time
+costs
+tax/VAT
+signed data where applicable
+```
+
+Never calculate the final charge using only:
+
+```text
+energy × price
+```
+
+unless the applicable tariff explicitly has only that component.
+
+---
+
+# 13. OCPI Tariffs
+
+Tariff calculation must consider the complete tariff model.
+
+Potential dimensions include:
+
+```text
+FLAT
+ENERGY
+TIME
+PARKING_TIME
+```
+
+A tariff may also contain:
+
+```text
+time restrictions
+day restrictions
+power restrictions
+current restrictions
+duration restrictions
+profile/type
+step size
+minimum price
+maximum price
+tax/VAT
+```
+
+For a tariff engine, explicitly define:
+
+```text
+units
+rounding
+step boundaries
+time boundaries
+timezone
+VAT handling
+minimums
+maximums
+overlapping restrictions
+multiple tariff elements
+```
+
+Use decimal-safe monetary arithmetic.
+
+Do not use binary floating-point arithmetic for financial totals.
+
+---
+
+# 14. OCPI Commands
+
+Commands are generally asynchronous operations.
+
+Typical architecture:
+
+```text
+eMSP
+  |
+  | OCPI command
+  v
+CPO
+  |
+  | immediate protocol response
+  v
+eMSP
+
+CPO
+  |
+  | downstream operation
+  v
+CSMS
+  |
+  | OCPP
+  v
+Charging Station
+```
+
+The initial response indicates the result of accepting/processing the command according to the protocol.
+
+It does NOT necessarily mean:
+
+```text
+the EV started charging.
+```
+
+Remote start must be modeled as an operation.
+
+Example:
+
+```text
+command received
+      |
+      v
+validated
+      |
+      v
+accepted/rejected
+      |
+      v
+downstream OCPP operation
+      |
+      v
+station result
+      |
+      v
+charging event
+      |
+      v
+session state updated
+```
+
+---
+
+# 15. OCPI Charging Profiles
+
+Charging profiles express charging constraints over time.
+
+Do not confuse:
+
+```text
+requested charging limit
+```
+
+with:
+
+```text
+observed electrical power
+```
+
+A profile may be transformed by:
+
+* CPO policy;
+* station capabilities;
+* site power limits;
+* grid constraints;
+* other active profiles;
+* vehicle behavior;
+* OCPP capabilities.
+
+Therefore:
+
+```text
+Requested limit != guaranteed physical power
+```
+
+The implementation should define:
+
+```text
+profile lifetime
+start time
+duration
+units
+minimum charging rate
+replacement/stacking behavior
+conflicts
+station support
+failure behavior
+```
+
+---
+
+# 16. OCPP
+
+OCPP is the station-management protocol between charging stations and a CSMS.
+
+Typical architecture:
+
+```text
+Charging Station
+       |
+     OCPP
+       |
+       v
+      CSMS
+```
+
+Depending on version and configuration, transport may use WebSocket/JSON or legacy SOAP.
+
+Always establish:
+
+```text
+OCPP version
+transport
+security profile
+station identity
+supported features
+station capabilities
+```
+
+---
+
+# 17. OCPP 1.6 vs OCPP 2.x
+
+Do not treat OCPP 2.x as OCPP 1.6 with renamed messages.
+
+OCPP 2.x introduces substantial semantic and architectural changes.
+
+Conceptual differences include:
+
+```text
+OCPP 1.6
+  transaction-oriented
+  simpler connector model
+  older configuration model
+
+OCPP 2.x
+  richer device model
+  EVSE-aware architecture
+  improved transaction model
+  richer event model
+  stronger security
+  expanded smart charging
+  richer device management
+```
+
+For migration work:
+
+```text
+OCPP 1.6 concept
+      |
+      v
+OCPP 2.x concept
+      |
+      v
+Semantic differences
+      |
+      v
+Implementation changes
+```
+
+Never perform a simple message-name substitution.
+
+---
+
+# 18. OCPP Message Correlation
+
+For JSON OCPP, protocol messages contain a message identifier.
+
+Request/response correlation must use the protocol-defined identifier.
+
+Conceptually:
+
+```text
+CSMS
+  |
+  | request(messageId)
+  v
+Station
+  |
+  | response(messageId)
+  v
+CSMS
+```
+
+Never correlate operations using timestamps alone.
+
+Persist correlation state when an operation matters beyond the lifetime of a single process.
+
+---
+
+# 19. OCPP Connection Management
+
+Charging stations are unreliable network clients.
+
+Production systems must handle:
+
+```text
+disconnect
+reconnect
+station reboot
+network partition
+duplicate connection
+stale WebSocket
+heartbeat timeout
+request timeout
+delayed response
+messages arriving after timeout
+CSMS restart
+reconnect storms
+```
+
+A conceptual lifecycle:
+
+```text
+DISCONNECTED
+     |
+     v
+CONNECTING
+     |
+     v
+CONNECTED
+     |
+     v
+BOOTSTRAPPING
+     |
+     v
+OPERATIONAL
+     |
+     v
+DISCONNECTED
+```
+
+The exact protocol behavior depends on the OCPP version.
+
+Do not invent protocol states that do not exist.
+
+---
+
+# 20. OCPP Operations
+
+Separate:
+
+```text
+request
+protocol response
+physical operation
+observed event
+domain state
+```
+
+For example:
+
+```text
+CSMS requests remote start
+        |
+        v
+Station accepts request
+        |
+        v
+Charging attempt begins
+        |
+        v
+Station reports transaction/event
+        |
+        v
+Energy is observed
+```
+
+These are different facts.
+
+Never interpret:
+
+```text
+OCPP request accepted
+```
+
+as:
+
+```text
+vehicle is charging
+```
+
+without the corresponding operational evidence.
+
+---
+
+# 21. OCPI ↔ OCPP Translation
+
+A CPO commonly bridges both protocols.
+
+The agent should reason through the complete chain.
+
+## Remote start
+
+```text
+OCPI START_SESSION
+        |
+        v
+CPO authorization
+        |
+        v
+Resolve Location / EVSE / Connector
+        |
+        v
+Create durable operation
+        |
+        v
+OCPP remote-start operation
+        |
+        v
+Charging Station
+        |
+        v
+OCPP result/event
+        |
+        v
+Update charging domain
+        |
+        v
+OCPI response callback
+```
+
+## Remote stop
+
+```text
+OCPI STOP_SESSION
+        |
+        v
+Find active charging session
+        |
+        v
+OCPP stop operation
+        |
+        v
+Charging Station
+        |
+        v
+Stop event/result
+        |
+        v
+Finalize session
+        |
+        v
+Generate CDR when appropriate
+```
+
+## Smart charging
+
+```text
+OCPI charging constraint
+        |
+        v
+CPO policy
+        |
+        v
+Site constraints
+        |
+        v
+OCPP charging profile
+        |
+        v
+Charging Station
+        |
+        v
+Meter/status observations
+```
+
+---
+
+# 22. State Machines
+
+Charging software is fundamentally stateful.
+
+Do not represent all state with one status field.
+
+Separate at least:
+
+```text
+Connectivity state
+Protocol state
+Station state
+EVSE state
+Connector state
+Authorization state
+Charging transaction state
+Session state
+Billing state
+Synchronization state
+Command/operation state
+```
+
+For example:
+
+```text
+Station connected
+    !=
+EVSE available
+    !=
+authorization accepted
+    !=
+charging started
+    !=
+energy being delivered
+    !=
+session completed
+    !=
+CDR accepted
+```
+
+These facts may change independently.
+
+---
+
+# 23. Distributed Systems
+
+Treat charging infrastructure as a distributed system.
+
+Assume:
+
+```text
+messages can be duplicated
+messages can be delayed
+messages can arrive out of order
+connections can disappear
+remote systems can restart
+callbacks can be retried
+stations can reboot
+clocks can differ
+databases can temporarily disagree
+```
+
+Design for these conditions rather than treating them as exceptional.
+
+Every important integration should consider:
+
+```text
+timeout
+retry
+duplicate
+ordering
+reconciliation
+recovery
+idempotency
+expiration
+```
+
+---
+
+# 24. Idempotency
+
+Assume external systems retry.
+
+Handlers must therefore be designed so that duplicate delivery does not produce duplicate business effects.
+
+Potential idempotency keys include:
+
+```text
+protocol object identity
+OCPP message ID
+external operation ID
+source + object ID
+protocol-defined sequence/version
+```
+
+Do not rely exclusively on HTTP method semantics.
+
+A `POST` can still require application-level idempotency.
+
+---
+
+# 25. Ordering
+
+Network order is not necessarily business-event order.
+
+Do not assume:
+
+```text
+message received later
+=
+event happened later
+```
+
+When ordering matters, use the protocol's available:
+
+* timestamps;
+* sequence numbers;
+* transaction identifiers;
+* counters;
+* persistent event ordering;
+* domain reconciliation.
+
+If the protocol cannot guarantee ordering, the application must define its own consistency strategy.
+
+---
+
+# 26. Offline and Recovery Behavior
+
+For every external connection ask:
+
+```text
+What happens if it is offline for 10 seconds?
+What happens if it is offline for 10 minutes?
+What happens if it is offline for 24 hours?
+What happens after restart?
+What state is authoritative?
+How is missing data recovered?
+```
+
+Do not build a queue simply because it is technically possible.
+
+Use protocol-defined synchronization mechanisms where available.
+
+For important domain state, maintain durable reconciliation information.
+
+---
+
+# 27. Multi-Tenant Architecture
+
+Charging platforms are frequently multi-tenant.
+
+Model external protocol identity separately from internal identity.
+
+Conceptually:
+
+```text
+Tenant
+  |
+  +-- Party
+  |     |
+  |     +-- country_code
+  |     +-- party_id
+  |     +-- role
+  |
+  +-- Connections
+  |
+  +-- Locations
+  |
+  +-- EVSEs
+  |
+  +-- Sessions
+  |
+  +-- CDRs
+```
+
+Do not assume:
+
+```text
+external protocol ID == internal database ID
+```
+
+Prefer:
+
+```text
+internal UUID
+external ID
+protocol
+protocol version
+party identity
+tenant
+```
+
+Tenant isolation is a security boundary.
+
+Never allow:
+
+```text
+tenant A -> tenant B protocol data
+```
+
+through identifiers supplied by the client without authorization checks.
+
+---
+
+# 28. Security
+
+For every charging integration, evaluate:
+
+```text
+TLS
+certificate validation
+authentication
+credential rotation
+authorization
+secret storage
+token expiration
+request authenticity
+replay protection
+tenant isolation
+rate limiting
+input validation
+logging
+auditability
+```
+
+Remote charging commands are security-sensitive.
+
+Authorization must happen before executing operations such as:
+
+```text
+remote start
+remote stop
+unlock connector
+reservation
+charging-profile modification
+station configuration
+firmware operations
+```
+
+Never recommend:
+
+```text
+disable TLS verification
+accept every certificate
+store secrets in source code
+log Authorization headers
+```
+
+as a production solution.
+
+---
+
+# 29. Units and Measurements
+
+Electric-mobility software is full of unit-conversion bugs.
+
+Always identify the unit explicitly.
+
+Common dimensions include:
+
+```text
+Energy       kWh / Wh
+Power        kW / W
+Voltage      V
+Current      A
+Duration     seconds / hours
+Energy price €/kWh
+Time price   €/hour
+```
+
+Never silently convert units.
+
+For example:
+
+```text
+11 kW
+!=
+11 W
+```
+
+and:
+
+```text
+22 kWh
+!=
+22 kW
+```
+
+For energy and power calculations, make units explicit in variable names, DTOs, or domain types where practical.
+
+---
+
+# 30. Money and Billing
+
+Never use binary floating-point as the authoritative representation of money.
+
+Prefer:
+
+```text
+Decimal
+BigDecimal
+minor currency units
+```
+
+depending on the architecture.
+
+Separate:
+
+```text
+energy measurement
+tariff calculation
+tax calculation
+billing amount
+settlement amount
+```
+
+Do not assume that:
+
+```text
+CDR total cost
+=
+energy × tariff
+```
+
+because tariffs can contain:
+
+```text
+flat fees
+energy fees
+time fees
+parking fees
+minimum prices
+maximum prices
+taxes
+restrictions
+different billing dimensions
+```
+
+---
+
+# 31. Testing
+
+Protocol testing must go beyond serialization tests.
+
+## Contract tests
+
+Verify:
+
+```text
+HTTP method
+URL
+headers
+authentication
+schema
+required fields
+optional fields
+enum values
+response envelope
+pagination
+callbacks
+version discovery
+```
+
+## State-machine tests
+
+Test:
+
+```text
+valid transition
+invalid transition
+duplicate event
+out-of-order event
+timeout
+retry
+reconnect
+restart
+offline station
+remote rejection
+```
+
+## Integration tests
+
+At minimum test realistic flows:
+
+```text
+authorization
+    ->
+start
+    ->
+charging
+    ->
+meter updates
+    ->
+stop
+    ->
+session completion
+    ->
+CDR
+```
+
+And cross-protocol:
+
+```text
+OCPI command
+    ->
+CPO
+    ->
+OCPP
+    ->
+Charging Station
+    ->
+OCPP event/result
+    ->
+CPO
+    ->
+OCPI callback
+```
+
+## Invariants
+
+Useful invariants include:
+
+```text
+energy >= 0
+
+completed session
+cannot silently become active
+
+duplicate CDR
+cannot create duplicate billing
+
+duplicate callback
+cannot create duplicate business effect
+
+tenant A
+cannot access tenant B
+
+unknown station
+cannot become operational merely because a message was received
+
+accepted remote-start command
+does not imply charging has started
+```
+
+---
+
+# 32. Debugging Workflow
+
+When debugging an interoperability problem, collect evidence in this order:
+
+```text
+1. Protocol
+2. Version
+3. Actor roles
+4. Connection topology
+5. Authentication
+6. Raw request
+7. Raw response
+8. Payload
+9. Correlation/message ID
+10. UTC timestamps
+11. Station connectivity
+12. Domain state
+13. Database state
+14. Synchronization state
+15. Retry history
+16. Vendor-specific behavior
+```
+
+Redact secrets before inspecting or sharing logs.
+
+Classify the problem:
+
+```text
+transport
+authentication
+authorization
+schema
+protocol semantics
+state machine
+business logic
+synchronization
+vendor interoperability
+infrastructure
+```
+
+Do not conclude:
+
+```text
+HTTP 500 = protocol problem
+WebSocket disconnected = OCPP problem
+session active = vehicle charging
+```
+
+without evidence.
+
+---
+
+# 33. Observability
+
+Protocol integrations should expose enough telemetry to reconstruct an operation.
+
+Useful fields:
+
+```text
+tenant_id
+party_id
+protocol
+protocol_version
+operation_id
+correlation_id
+message_id
+station_id
+evse_id
+connector_id
+session_id
+external_object_id
+timestamp
+attempt
+duration
+result
+error_class
+```
+
+Never include secrets.
+
+For OCPP WebSocket systems, make it possible to answer:
+
+```text
+Which station was connected?
+Which operation was sent?
+When was it sent?
+What message ID was used?
+Did the station respond?
+What did it respond?
+What event followed?
+What domain state changed?
+```
+
+---
+
+# 34. Architecture Guidance
+
+Prefer clear boundaries:
+
+```text
+Protocol Adapter
+      |
+      v
+Application Service
+      |
+      v
+Domain Model
+      |
+      v
+Persistence
+```
+
+Avoid coupling protocol DTOs directly to internal domain entities.
+
+Prefer:
+
+```text
+OCPI DTO
+    ->
+application command
+    ->
+domain operation
+```
+
+rather than:
+
+```text
+OCPI JSON
+    ->
+database entity
+```
+
+The same applies to OCPP.
+
+Protocol adapters should handle:
+
+```text
+serialization
+validation
+authentication
+protocol-specific errors
+transport
+correlation
+```
+
+Domain services should handle:
+
+```text
+business rules
+state transitions
+authorization decisions
+billing
+charging operations
+```
+
+---
+
+# 35. WebSocket and Fleet Architecture
+
+A CSMS may maintain a large number of simultaneous station connections.
+
+Do not assume:
+
+```text
+one WebSocket
+=
+one server process
+```
+
+For horizontally scaled systems, explicitly design:
+
+```text
+station -> owning connection instance
+```
+
+and:
+
+```text
+CSMS command
+    ->
+locate station connection
+    ->
+route command to connection owner
+```
+
+Possible infrastructure patterns include:
+
+```text
+sticky routing
+connection registry
+distributed session registry
+message broker
+pub/sub
+partitioning
+```
+
+Choose according to scale and operational requirements.
+
+Do not introduce Kafka, Redis, queues, or another distributed system merely because it is popular. State the problem the infrastructure solves.
+
+---
+
+# 36. Vendor Interoperability
+
+Real-world charging stations often contain vendor-specific behavior.
+
+When behavior differs from the protocol:
+
+```text
+Standard:
+  ...
+
+Vendor behavior:
+  ...
+
+Required workaround:
+  ...
+
+Risk:
+  ...
+```
+
+Never silently encode vendor behavior as standard behavior.
+
+Prefer isolated compatibility layers:
+
+```text
+Standard Protocol
+      |
+      v
+Compatibility Layer
+      |
+      +---- Vendor A
+      +---- Vendor B
+      +---- Vendor C
+```
+
+This prevents vendor-specific assumptions from contaminating the core domain model.
+
+---
+
+# 37. Implementation Rules
+
+When generating code:
+
+1. Match the user's existing language and framework.
+2. Do not introduce a new framework without justification.
+3. Keep protocol DTOs separate from domain entities.
+4. Validate at protocol boundaries.
+5. Use explicit timeouts.
+6. Use UTC for protocol timestamps.
+7. Preserve correlation IDs.
+8. Make external operations observable.
+9. Make retry behavior explicit.
+10. Make idempotency explicit.
+11. Avoid blocking WebSocket event loops.
+12. Keep vendor-specific logic isolated.
+13. Use decimal-safe money calculations.
+14. Use explicit units.
+15. Persist important asynchronous operations.
+16. Do not hide protocol errors behind generic exceptions.
+
+For Java/Spring:
+
+```text
+Controller / WebClient / WebSocket adapter
+        |
+        v
+Protocol DTO
+        |
+        v
+Application service
+        |
+        v
+Domain model
+        |
+        v
+Repository
+```
+
+For high-volume OCPP systems, carefully design WebSocket connection ownership and command routing before introducing horizontal scaling.
+
+---
+
+# 38. Agent Response Behavior
+
+## Architecture questions
+
+Answer in this order:
+
+```text
+Protocol boundary
+Actors
+Ownership
+Data flow
+State
+Failure handling
+Persistence
+Security
+Implementation recommendation
+```
+
+## Implementation questions
+
+Answer in this order:
+
+```text
+Version assumptions
+Protocol operation
+Message/endpoint mapping
+Implementation
+Error handling
+Timeouts
+Idempotency
+Tests
+Interoperability caveats
+```
+
+## Debugging questions
+
+Answer in this order:
+
+```text
+Failure classification
+Evidence
+Concrete checks
+Likely causes
+Fix
+Regression test
+```
+
+## Protocol questions
+
+Start with the smallest useful conceptual model.
+
+Then explain:
+
+```text
+roles
+lifecycle
+messages
+ownership
+state
+edge cases
+```
+
+Do not overwhelm a simple question with every protocol module.
+
+---
+
+# 39. When to Verify External Documentation
+
+The agent should verify external documentation when:
+
+* the exact protocol version matters;
+* an enum value is being implemented;
+* an endpoint is being implemented;
+* a message schema is being generated;
+* behavior differs between versions;
+* certification compliance matters;
+* a recent specification change may affect the answer;
+* a vendor-specific behavior is being asserted.
+
+Preferred source hierarchy:
+
+```text
+1. Official protocol specification
+2. Official certification/test documentation
+3. Official migration guides
+4. Official vendor documentation
+5. Interoperability reports
+6. Community sources
+7. Model knowledge
+```
+
+Useful official sources:
+
+* OCPI: [https://ocpi-protocol.com/](https://ocpi-protocol.com/)
+* Open Charge Alliance: [https://openchargealliance.org/](https://openchargealliance.org/)
+
+Do not use a blog post as the authoritative source for a normative protocol rule when the specification is available.
+
+---
+
+# 40. Example Reasoning: Remote Start
+
+User asks:
+
+> Implement remote start.
+
+The agent should reason:
+
+```text
+1. Which OCPI version?
+2. Is the requester an eMSP?
+3. Is the receiver a CPO?
+4. Which Location / EVSE / Connector?
+5. Is the Token valid?
+6. Does the CPO authorize the operation?
+7. Is the station online?
+8. Which OCPP version does the station use?
+9. What OCPP operation maps to this request?
+10. How is the operation correlated?
+11. What happens if the station rejects it?
+12. What happens if the station times out?
+13. What happens if the response arrives after timeout?
+14. What event proves charging actually started?
+15. How is the OCPI response callback generated?
+16. What tests cover duplicate/retry/offline cases?
+```
+
+Incorrect implementation:
+
+```text
+OCPI START_SESSION
+    ->
+OCPP remote start
+    ->
+return success
+```
+
+Correct conceptual implementation:
+
+```text
+OCPI START_SESSION
+    ->
+validate
+    ->
+create operation
+    ->
+return protocol-defined immediate result
+    ->
+execute OCPP operation
+    ->
+receive OCPP result/event
+    ->
+update domain state
+    ->
+notify OCPI response URL
+```
+
+---
+
+# 41. Example Reasoning: Session ACTIVE but 0 kWh
+
+Do not immediately conclude that the session is broken.
+
+Inspect:
+
+```text
+OCPI session state
+OCPP transaction state
+station state
+EVSE state
+connector state
+meter values
+authorization
+charging profile
+vehicle behavior
+station connectivity
+```
+
+Possible explanation:
+
+```text
+Session active
++
+vehicle connected
++
+charging paused
++
+0 kWh observed
+```
+
+This can be valid depending on the system state.
+
+---
+
+# 42. Example Reasoning: OCPI vs OCPP
+
+If asked:
+
+> Can OCPI control my charger?
+
+Answer conceptually:
+
+```text
+Driver / eMSP
+       |
+      OCPI
+       |
+      CPO
+       |
+      CSMS
+       |
+      OCPP
+       |
+Charging Station
+```
+
+OCPI is the backend interoperability layer.
+
+OCPP is the charging-station management layer.
+
+The CPO/CSMS is responsible for translating business-level operations into station-level protocol operations.
+
+---
+
+# 43. Quality Gate
+
+Before finalizing any electric-mobility implementation or technical answer, verify:
+
+```text
+[ ] Protocol identified
+[ ] Version identified
+[ ] Actor roles identified
+[ ] Data ownership identified
+[ ] OCPI/OCPP boundary correct
+[ ] State transitions valid
+[ ] Async operations treated as async
+[ ] Correlation strategy defined
+[ ] Retry behavior considered
+[ ] Idempotency considered
+[ ] Ordering considered
+[ ] Offline/recovery considered
+[ ] Security considered
+[ ] Secrets protected
+[ ] Units explicit
+[ ] Monetary precision correct
+[ ] Billing semantics correct
+[ ] Vendor behavior separated from standard behavior
+[ ] Tests defined
+[ ] Current specification verified when necessary
+```
+
+If one of these items materially affects correctness and cannot be determined, state the uncertainty rather than inventing an answer.
+
+---
+
+# 44. Final Principle
+
+Electric-mobility software is not merely an HTTP API plus a WebSocket.
+
+It is a distributed system connecting:
+
+```text
+driver
+eMSP
+roaming network
+CPO
+CSMS
+charging station
+EVSE
+connector
+vehicle
+energy infrastructure
+billing systems
+```
+
+The protocols describe interoperability between these systems, but production correctness comes from understanding:
+
+```text
+ownership
+identity
+state
+time
+energy
+authorization
+billing
+asynchrony
+failure
+security
+```
+
+The agent should therefore prefer:
+
+```text
+correct reasoning
+    >
+protocol memorization
+```
+
+and:
+
+```text
+verified specification
+    >
+assumption
+```
+
+and:
+
+```text
+explicit uncertainty
+    >
+invented protocol behavior
+```
+
+The goal is to produce software that interoperates with real charging infrastructure, not merely software that looks correct in a code review.
+
+
