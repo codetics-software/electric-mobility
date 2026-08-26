@@ -2084,7 +2084,887 @@ The CPO/CSMS is responsible for translating business-level operations into stati
 
 ---
 
-# 43. Quality Gate
+
+# 43. Universal Electric Mobility Skill Specification
+
+## 43.1. Domain Architecture & Protocol Coverage
+
+This is example of how to codifies end-to-end standards across the three core tiers of EV charging software:
+
+* **Protocol Engine (Domain Core)**: OCPP 1.6-J, 2.0.1, 2.1 JSON RPC over WebSockets, OCPI 2.2.1 / 3.0 eMSP/CPO roaming REST modules, and ISO 15118-2/-20 Plug & Charge PKI protocols.
+* **Backend Platform (C# / .NET 9+)**: High-throughput ASP.NET Core CSMS connection pool, background WebSocket dispatchers, and zero-allocation JSON DTOs (`System.Text.Json`).
+* **Mobile Platforms (Android & iOS)**: Reactive charging dashboards, live energy delivery telemetry, marker clustering, and background session tracking via Jetpack Compose and SwiftUI + ActivityKit.
+
+---
+
+## 43.2. Cross-Protocol State Machine Matrix
+
+All backend engines and client UIs MUST resolve charger states using this deterministic state mapping:
+
+| Target Standard State | OCPP 1.6-J | OCPP 2.0.1 / 2.1 | OCPI 2.2.1 | Mobile UI Mapping & Accent Token |
+| :--- | :--- | :--- | :--- | :--- |
+| **Available** | `Available` | `Available` | `AVAILABLE` | Green (`#00C853`) / Ready for Tap |
+| **Preparing** | `Preparing` | `Occupied` | `OCCUPIED` | Amber (`#FFB300`) / Cable Plugged |
+| **Charging** | `Charging` | `Occupied` | `CHARGING` | Primary Blue (`#007AFF`) / Pulse Gauge |
+| **Suspended EV/EVSE** | `SuspendedEV` | `Occupied` | `SUSPENDED_EV` | Warning Orange (`#FF6D00`) / Check Car |
+| **Finishing** | `Finishing` | `Occupied` | `FINISHING` | Slate Gray (`#78909C`) / Session Ending |
+| **Faulted / Inoperative**| `Faulted` | `Faulted` | `INOPERATIVE` | Red (`#D32F2F`) / Alert Badge |
+
+---
+
+## 43.3. Platform Blueprints & Implementation Patterns
+
+### 43.3.A. C# ASP.NET Core CSMS Engine (`platform-csharp`)
+* **Rule 1**: WebSockets must stream frame arrays `[MessageTypeId, MessageId, Action, Payload]`.
+* **Rule 2**: Enforce UTC millisecond precision for all telemetry (`YYYY-MM-DDTHH:mm:ss.sssZ`).
+* **Rule 3**: Use `System.Text.Json` Source Generators for low-allocation RPC frame dispatch.
+
+```csharp
+using System.Net.WebSockets;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.Http;
+
+namespace Mobility.CSMS.Core;
+
+public record OcppCall(int MessageType, string MessageId, string Action, JsonElement Payload);
+
+public class OcppWebSocketDispatcher
+{
+    public async Task ProcessConnectionAsync(string stationId, WebSocket socket, CancellationToken ct)
+    {
+        var buffer = new byte[1024 * 8];
+        
+        while (socket.State == WebSocketState.Open && !ct.IsCancellationRequested)
+        {
+            var result = await socket.ReceiveAsync(new ArraySegment<byte>(buffer), ct);
+            if (result.MessageType == WebSocketMessageType.Close) break;
+
+            var rawJson = Encoding.UTF8.GetString(buffer, 0, result.Count);
+            byte[] responseFrame = DispatchFrame(rawJson);
+            
+            if (responseFrame.Length > 0)
+            {
+                await socket.SendAsync(responseFrame, WebSocketMessageType.Text, true, ct);
+            }
+        }
+    }
+
+    private byte[] DispatchFrame(string rawJson)
+    {
+        using var doc = JsonDocument.Parse(rawJson);
+        var root = doc.RootElement;
+        
+        int msgType = root[0].GetInt32();
+        string msgId = root[1].GetString()!;
+
+        if (msgType == 2) // CALL
+        {
+            string action = root[2].GetString()!;
+            var payload = root[3];
+
+            object responsePayload = action switch
+            {
+                "BootNotification" => new { status = "Accepted", currentTime = DateTime.UtcNow.ToString("o"), interval = 300 },
+                "Heartbeat" => new { currentTime = DateTime.UtcNow.ToString("o") },
+                "StatusNotification" => new { },
+                "TransactionEvent" => new { totalCost = 0.00 },
+                _ => new { errorCode = "NotSupported" }
+            };
+
+            var rpcResponse = new object[] { 3, msgId, responsePayload };
+            return JsonSerializer.SerializeToUtf8Bytes(rpcResponse, OcppJsonContext.Default.ObjectArray);
+        }
+        return Array.Empty<byte>();
+    }
+}
+
+[JsonSerializable(typeof(object[]))]
+public partial class OcppJsonContext : JsonSerializerContext { }
+
+```
+
+### 43.3.B. Android Jetpack Compose EV Client (`platform-android`)
+
+* **Rule 1**: UI states must be exposed via `StateFlow` inside ViewModel with Unidirectional Data Flow (UDF).
+* **Rule 2**: Charge rate (kW) and battery state-of-charge (SoC %) must render with animated gauges.
+
+```kotlin
+package com.mobility.charging.ui
+
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+
+data class SessionState(
+    val stationName: String = "FastCharge Point #01",
+    val powerKw: Double = 0.0,
+    val socPercent: Int = 0,
+    val isCharging: Boolean = false
+)
+
+class ChargingViewModel : ViewModel() {
+    private val _uiState = MutableStateFlow(SessionState())
+    val uiState: StateFlow<SessionState> = _uiState
+
+    fun updateTelemetry(power: Double, soc: Int) {
+        _uiState.value = _uiState.value.copy(powerKw = power, socPercent = soc, isCharging = true)
+    }
+}
+
+@Composable
+fun ChargingDashboard(viewModel: ChargingViewModel) {
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    
+    Column(
+        modifier = Modifier.fillMaxSize().padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(text = state.stationName, style = MaterialTheme.typography.titleLarge)
+        
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.size(220.dp)) {
+            val animProgress by animateFloatAsState(
+                targetValue = state.socPercent / 100f,
+                animationSpec = tween(600), label = "soc"
+            )
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                drawArc(Color.LightGray.copy(alpha = 0.3f), 135f, 270f, false, style = Stroke(18.dp.toPx(), cap = StrokeCap.Round))
+                drawArc(Color(0xFF00C853), 135f, 270f * animProgress, false, style = Stroke(18.dp.toPx(), cap = StrokeCap.Round))
+            }
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(text = "${state.socPercent}%", style = MaterialTheme.typography.headlineLarge)
+                Text(text = "${state.powerKw} kW", style = MaterialTheme.typography.bodyLarge, color = Color.Gray)
+            }
+        }
+        
+        Button(
+            onClick = { /* Stop Charging */ },
+            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+            modifier = Modifier.fillMaxWidth().height(52.dp)
+        ) {
+            Text("Stop Session")
+        }
+    }
+}
+
+```
+
+### 43.3.C. iOS SwiftUI & ActivityKit Client (`platform-ios`)
+
+* **Rule 1**: State objects must leverage Swift 6 `@Observable` macro architecture.
+* **Rule 2**: Support Live Activities via `ActivityKit` for Dynamic Island session updates during app backgrounding.
+
+```swift
+import SwiftUI
+import ActivityKit
+
+@Observable
+@MainActor
+public final class EVSessionModel {
+    public private(set) var powerKw: Double = 0.0
+    public private(set) var socPercent: Int = 0
+    public private(set) var activeSessionId: String? = nil
+    
+    public init() {}
+    
+    public func update(power: Double, soc: Int, sessionId: String) {
+        self.powerKw = power
+        self.socPercent = soc
+        self.activeSessionId = sessionId
+    }
+}
+
+public struct EVChargingView: View {
+    @State private var model = EVSessionModel()
+    
+    public init() {}
+    
+    public var body: some View {
+        VStack(spacing: 28) {
+            Text("DC Fast Charger - Bay A")
+                .font(.headline)
+                .foregroundStyle(.secondary)
+            
+            Gauge(value: Double(model.socPercent), in: 0...100) {
+                Text("Battery Level")
+            } currentValueLabel: {
+                Text("\(model.socPercent)%")
+                    .font(.title)
+                    .bold()
+            }
+            .gaugeStyle(.accessoryCircular)
+            .tint(.green)
+            .scaleEffect(1.6)
+            .padding(.vertical, 24)
+            
+            Text(String(format: "%.1f kW", model.powerKw))
+                .font(.system(.title, design: .monospaced))
+                .bold()
+            
+            Button(role: .destructive) {
+                // Terminate session
+            } label: {
+                Text("End Session")
+                    .frame(maxWidth: .infinity)
+                    .padding()
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .padding(24)
+        .onAppear {
+            model.update(power: 120.0, soc: 58, sessionId: "SESS-789")
+        }
+    }
+}
+
+```
+
+---
+
+## 43.4. Decision Matrix & Error Handling Rules
+
+1. **Protocol Mismatch Rules**:
+* If an incoming OCPP message violates schema format, return `FormationViolation` (Error Code `4`).
+* If an OCPI token authorization fails, respond with OCPI status code `2001` (`Invalid Token`) with HTTP `200 OK`.
+
+
+2. **Reconnection Strategy**:
+* Client applications (Compose / SwiftUI) must implement exponential backoff reconnection for WebSockets: initial delay $1.0\,s$, backoff multiplier $2.0$, maximum delay $60.0\,s$.
+
+
+3. **Data Precision**:
+* Store all billing energy metrics in Watt-Hours ($Wh$) internally. Convert to kilowatt-hours ($kWh$) rounded to 2 decimal places strictly for UI display.
+
+# 44. RFID Card Authorization & Consolidated Billing Skill
+
+This is only if the project does required a single invoice for the whole system. It's an example of how to handle one single rfid card to authenticate in a platform of an IoT ecosystem.
+
+## 44.1. Architecture & Unified Billing Domain Model
+
+To ensure a user receives **one single invoice** regardless of which physical RFID card, key fob, or vehicle-linked tag they tap, the system maps multiple hardware RFID UIDs to a single internal `UserAccount` entity.
+
+
+```
+
++-------------------------------------------------------+
+|                 User Account (User ID)                |
+|  - Unified Wallet Balance                             |
+|  - Single Monthly Invoice / Ledger                    |
++-------------------------------------------------------+
+|
++---------------+---------------+
+| 1:N                           | 1:N
++--------------------+           +--------------------+
+|  RFID Token #1     |           |  RFID Token #2     |
+|  UID: "A1B2C3D4"   |           |  UID: "E5F67890"   |
+|  Type: ISO14443    |           |  Type: MifareDes   |
++--------------------+           +--------------------+
+|                               |
++---------------+---------------+
+|
+v
++-------------------------------------+
+|  OCPP / OCPI Authorization Engine   |
+|  - Resolves UID -> Token -> User    |
+|  - Checks Status (Accepted/Blocked) |
+|  - Routes CDR to User Account       |
++-------------------------------------+
+
+```
+
+---
+
+## 44.2. Hardware UID Normalization Protocol
+
+RFID readers (e.g., ISO 14443 Type A/B, Mifare Classic, DESFire, Legic) report byte sequences differently depending on endianness. The CSMS and charging station MUST normalize all RFID bytes before database lookup or OCPP dispatch.
+
+### UID Format Standards Matrix
+| RFID Card Type | Raw Byte Length | Hardware Reader Output Format | Standardized OCPP `idToken` |
+| :--- | :--- | :--- | :--- |
+| **Mifare Classic 1K/4K** | 4 Bytes (32-bit UID) | Hex String (Big Endian) | `A1B2C3D4` |
+| **Mifare DESFire / EV1** | 7 Bytes (56-bit UID) | Hex String Uppercase | `04A1B2C3D4E5F6` |
+| **ISO 15693 / Vicinity** | 8 Bytes (64-bit UID) | Reversed Hex / Swapped Bytes | Normalized Big Endian Hex |
+| **OCPI Token Visual ID** | Printed Text | Alphanumeric (Formatted) | `FR-CPO-c12345` |
+
+---
+
+## 44.3. OCPP 1.6-J & 2.0.1 Authorization Handshakes
+
+### Flow: Station RFID Tap to Unified Session
+
+
+```
+
+[EV Driver]            [EVSE / Charger]               [CSMS Core System]             [Billing Ledger]
+|                        |                                |                            |
+|-- Tap RFID Card ------>|                                |                            |
+|                        |-- Authorize.req(idToken) ----->|                            |
+|                        |   Type: ISO14443               |                            |
+|                        |                                |-- Resolve UID to User ---->|
+|                        |                                |   Check Balance / Status   |
+|                        |<-- Authorize.conf(Accepted) ---|<-- Return User Account OK -|
+|                        |                                |                            |
+|-- Connect Cable ------>|                                |                            |
+|                        |-- TransactionEvent(Started) -->|                            |
+|                        |                                |-- Attach Tx to User Account|
+|                        |                                |                            |
+|-- Tap RFID Card Stop ->|                                |                            |
+|                        |-- TransactionEvent(Ended) ---->|                            |
+|                        |                                |-- Create CDR ------------->|
+|                        |                                |   Add to Monthly Invoice   |
+
+```
+
+---
+
+## 44.4. Backend Implementation Patterns (C# ASP.NET Core)
+
+### 44.4.A. RFID Authorization & Billing Resolver Service
+
+```csharp
+namespace Mobility.Domain.Services;
+
+public record RfidAuthRequest(string RawUid, string StationId, int EvseId, string TokenType = "ISO14443");
+public record RfidAuthResponse(bool IsAuthorized, string IdTokenStatus, Guid? UserAccountId, string? FailureReason);
+
+public interface IRfidAuthorizationService
+{
+    Task<RfidAuthResponse> AuthorizeTapAsync(RfidAuthRequest request, CancellationToken ct);
+}
+
+public class RfidAuthorizationService : IRfidAuthorizationService
+{
+    private readonly ITokenRepository _tokenRepository;
+    private readonly IUserAccountRepository _userRepository;
+
+    public RfidAuthorizationService(ITokenRepository tokenRepository, IUserAccountRepository userRepository)
+    {
+        _tokenRepository = tokenRepository;
+        _userRepository = userRepository;
+    }
+
+    public async Task<RfidAuthResponse> AuthorizeTapAsync(RfidAuthRequest request, CancellationToken ct)
+    {
+        // 1. Normalize UID Format (Uppercase Hex String without delimiters)
+        string normalizedUid = NormalizeRfidUid(request.RawUid);
+
+        // 2. Fetch Token Entity
+        var token = await _tokenRepository.FindByUidAsync(normalizedUid, ct);
+        if (token == null)
+        {
+            return new RfidAuthResponse(false, "Unknown", null, "RFID card not registered in system");
+        }
+
+        if (!token.IsActive || token.IsBlocked)
+        {
+            return new RfidAuthResponse(false, "Blocked", token.UserAccountId, "RFID card has been deactivated");
+        }
+
+        // 3. Resolve User Account
+        var userAccount = await _userRepository.GetByIdAsync(token.UserAccountId, ct);
+        if (userAccount == null || !userAccount.CanStartSession(out var reason))
+        {
+            return new RfidAuthResponse(false, "Invalid", token.UserAccountId, reason ?? "User account suspended");
+        }
+
+        // 4. Return Authorized Response linked to single User Account
+        return new RfidAuthResponse(true, "Accepted", userAccount.Id, null);
+    }
+
+    private static string NormalizeRfidUid(string rawUid)
+    {
+        return rawUid.Replace(":", "").Replace("-", "").Replace(" ", "").Trim().ToUpperInvariant();
+    }
+}
+
+```
+
+### 44.4.B. Single Ledger CDR Routing Engine
+
+```csharp
+namespace Mobility.Domain.Billing;
+
+public class ChargingTransactionBillingEngine
+{
+    private readonly IBillingLedgerRepository _ledgerRepository;
+
+    public ChargingTransactionBillingEngine(IBillingLedgerRepository ledgerRepository)
+    {
+        _ledgerRepository = ledgerRepository;
+    }
+
+    public async Task ProcessCompletedTransactionAsync(Guid userAccountId, string rfidUid, double totalKwh, decimal cost, CancellationToken ct)
+    {
+        // All transactions, regardless of RFID UID, route directly to the single user ledger
+        var ledgerEntry = new LedgerEntry
+        {
+            Id = Guid.NewGuid(),
+            UserAccountId = userAccountId,
+            UsedRfidUid = rfidUid,
+            EnergyDeliveredKwh = totalKwh,
+            AmountDecimal = cost,
+            Timestamp = DateTime.UtcNow,
+            EntryType = LedgerEntryType.SessionCharge
+        };
+
+        await _ledgerRepository.AddEntryAsync(ledgerEntry, ct);
+    }
+}
+
+```
+
+---
+
+## 44.5. Mobile UI Component Patterns (Managing Linked RFID Cards)
+
+Users must be able to add, manage, and assign custom nicknames to multiple RFID cards under their single account.
+
+### Android Jetpack Compose RFID Card Management
+
+```kotlin
+package com.mobility.charging.ui.rfid
+
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+
+data class RfidCardUiModel(
+    val id: String,
+    val uidMasked: String, // e.g., "**** A1B2"
+    val cardNickname: String,
+    val isActive: Boolean
+)
+
+@Composable
+fun UserRfidCardsScreen(
+    cards: List<RfidCardUiModel>,
+    onToggleCardStatus: (String, Boolean) -> Unit
+) {
+    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+        Text("My Charging Badges & Cards", style = MaterialTheme.typography.titleLarge)
+        Text("All cards are billed to your primary monthly invoice.", style = MaterialTheme.typography.bodyMedium)
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(cards) { card ->
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(text = card.cardNickname, style = MaterialTheme.typography.titleMedium)
+                            Text(text = "UID: ${card.uidMasked}", style = MaterialTheme.typography.bodySmall)
+                        }
+                        Switch(
+                            checked = card.isActive,
+                            onCheckedChange = { isChecked -> onToggleCardStatus(card.id, isChecked) }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+```
+
+### iOS SwiftUI Linked RFID Badges View
+
+```swift
+import SwiftUI
+
+public struct RfidBadgeViewModel: Identifiable {
+    public let id: String
+    public let nickname: String
+    public let maskedUid: String
+    public var isActive: Bool
+}
+
+public struct UserRfidBadgesView: View {
+    @State private var badges: [RfidBadgeViewModel] = [
+        RfidBadgeViewModel(id: "1", nickname: "Primary Key Fob", maskedUid: "•••• A1B2", isActive: true),
+        RfidBadgeViewModel(id: "2", nickname: "Work Car Badge", maskedUid: "•••• E5F6", isActive: false)
+    ]
+    
+    public var body: some View {
+        List {
+            Section(header: Text("Linked RFID Badges"), footer: Text("Sessions started with any enabled badge will automatically combine into your primary account invoice.")) {
+                ForEach($badges) {$badge in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(badge.nickname)
+                                .font(.headline)
+                            Text(badge.maskedUid)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Toggle("", isOn: $badge.isActive)
+                    }
+                }
+            }
+        }
+        .navigationTitle("RFID Badges")
+    }
+}
+
+```
+
+---
+
+## 44.6. OCPI 2.2.1 Tokens Module Mapping Engine
+
+When roaming between CPO and eMSP systems, RFID authorization tokens are synchronized via the OCPI `Tokens` module.
+
+```json
+{
+  "country_code": "FR",
+  "party_id": "CPO",
+  "uid": "A1B2C3D4",
+  "type": "RFID",
+  "contract_id": "FR-CPO-C12345678",
+  "visual_number": "NL-TNM-000123-X",
+  "issuer": "Electric Mobility Solutions",
+  "valid": true,
+  "whitelist": "ALWAYS",
+  "last_updated": "2026-08-26T12:00:00Z"
+}
+
+```
+
+### Authorization Rules & Fallbacks
+
+1. **Local Auth List (Offline Cache)**: Download OCPI Token lists to charger memory via OCPP `SendLocalList` for fast local RFID validation when offline.
+2. **Real-time Authorization**: If UID is not in Local Auth List, send OCPP `Authorize.req` to CSMS to resolve token online.
+3. **Roaming Authorization**: If CSMS does not recognize local UID, forward `POST /ocpi/receiver/2.2.1/tokens/A1B2C3D4/authorize` to connected eMSP partners.
+
+# 45. OCPP 2.0.1 SendLocalList Authorization Cache Synchronization Skill
+
+## 45.1. Domain Overview & Protocol Mechanics
+
+The `SendLocalList` command allows a CSMS (Charging Station Management System) to push a local authorization list to an EVSE (Charger). This enables stations to validate RFID cards (`IdToken`) locally when internet or CSMS connectivity is lost.
+
+### Key Concepts & Enums
+
+* **`UpdateType`**:
+  * `Full`: Replaces the entire local authorization list on the charger. Resets `versionNumber`.
+  * `Differential`: Applies delta changes (additions, updates, deletions) to the existing list on the charger.
+* **`SendLocalListStatus`**:
+  * `Accepted`: The charger successfully applied the update list.
+  * `Failed`: The charger failed to process the update list.
+  * `VersionMismatch`: The charger's current list version number does not match the expected base version for a differential update.
+  * `UpdateNotSupported`: The charger does not support local authorization lists.
+* **`AuthorizationData`**:
+  * `idToken`: Contains the identifier (`idToken.id` string and `idToken.type` e.g., `ISO14443`, `MacAddress`, `eMAID`).
+  * `idTokenInfo`: Status (`Accepted`, `Blocked`, `Expired`, `Invalid`, `ConcurrentTx`), optional `groupIdToken`, `cacheExpiryDateTime`, and `personalMessage`.
+
+---
+
+## 45.2. Synchronization Flow & Versioning State Machine
+
+
+```
+
+CSMS Database                          Charging Station (EVSE)
+[Version: 104]                              [Version: 103]
+|                                           |
+|--- 1. Calculate Differential Delta ------>|
+|    (Version 104, Differential)            |
+|                                           |
+|--- 2. SendLocalList.req(104, Diff) ------>|
+|                                           |-- Validate Version --+
+|                                           |   Current (103) + 1  |
+|                                           |   == Incoming (104)  |
+|                                           |<---------------------+
+|<-- 3. SendLocalList.conf(Accepted) -------| Updates Local DB
+|                                           | New Version: 104
+|                                           |
+====================== VERSION MISMATCH RECOVERY ======================
+|                                           |
+[Version: 108]                              [Version: 102]
+|                                           |
+|--- SendLocalList.req(108, Diff) --------->|
+|                                           |-- Check Version: Mismatch!
+|<-- SendLocalList.conf(VersionMismatch) ---| Returns VersionMismatch
+|                                           |
+|--- 4. Trigger Full Sync ----------------->|
+|    SendLocalList.req(108, Full)           | Replaces complete
+|<-- SendLocalList.conf(Accepted) ----------| local authorization list
+
+```
+
+---
+
+## 45.3. JSON RPC 2.0 Frame Schemas
+
+### 45.3.A. Request Payload (`SendLocalListRequest`)
+
+```json
+[
+  2,
+  "msg-sync-89021",
+  "SendLocalList",
+  {
+    "versionNumber": 104,
+    "updateType": "Differential",
+    "localAuthorizationList": [
+      {
+        "idToken": {
+          "id": "04A1B2C3D4E5F6",
+          "type": "ISO14443"
+        },
+        "idTokenInfo": {
+          "status": "Accepted",
+          "cacheExpiryDateTime": "2026-12-31T23:59:59.000Z",
+          "groupIdToken": {
+            "id": "FLEET-VIP-01",
+            "type": "Central"
+          }
+        }
+      },
+      {
+        "idToken": {
+          "id": "A1B2C3D4",
+          "type": "ISO14443"
+        },
+        "idTokenInfo": {
+          "status": "Blocked"
+        }
+      }
+    ]
+  }
+]
+
+```
+
+### 45.3.B. Response Payload (`SendLocalListResponse`)
+
+```json
+[
+  3,
+  "msg-sync-89021",
+  {
+    "status": "Accepted"
+  }
+]
+
+```
+
+---
+
+## 45.4. C# ASP.NET Core Server-Side Sync Engine
+
+### 45.4.A. Local List Domain Models (`Ocpp201LocalList.cs`)
+
+```csharp
+using System.Text.Json.Serialization;
+
+namespace Mobility.CSMS.Ocpp201;
+
+public enum UpdateType
+{
+    Full,
+    Differential
+}
+
+public enum SendLocalListStatus
+{
+    Accepted,
+    Failed,
+    VersionMismatch,
+    UpdateNotSupported
+}
+
+public enum IdTokenStatus
+{
+    Accepted,
+    Blocked,
+    Expired,
+    Invalid,
+    ConcurrentTx
+}
+
+public record IdTokenDto(
+    [property: JsonPropertyName("id")] string Id,
+    [property: JsonPropertyName("type")] string Type = "ISO14443"
+);
+
+public record IdTokenInfoDto(
+    [property: JsonPropertyName("status")] string Status,
+    [property: JsonPropertyName("cacheExpiryDateTime")] string? CacheExpiryDateTime = null,
+    [property: JsonPropertyName("groupIdToken")] IdTokenDto? GroupIdToken = null
+);
+
+public record AuthorizationDataDto(
+    [property: JsonPropertyName("idToken")] IdTokenDto IdToken,
+    [property: JsonPropertyName("idTokenInfo")] IdTokenInfoDto? IdTokenInfo = null
+);
+
+public record SendLocalListRequestDto(
+    [property: JsonPropertyName("versionNumber")] int VersionNumber,
+    [property: JsonPropertyName("updateType")] string UpdateType,
+    [property: JsonPropertyName("localAuthorizationList")] List<AuthorizationDataDto>? LocalAuthorizationList
+);
+
+public record SendLocalListResponseDto(
+    [property: JsonPropertyName("status")] string Status
+);
+
+```
+
+### B. Synchronization Service Manager (`LocalListSyncService.cs`)
+
+```csharp
+using System.Text.Json;
+
+namespace Mobility.CSMS.Services;
+
+public interface ILocalListSyncService
+{
+    Task PushFullListAsync(string stationId, CancellationToken ct);
+    Task PushDifferentialUpdateAsync(string stationId, List<AuthorizationDataDto> changedTokens, CancellationToken ct);
+}
+
+public class LocalListSyncService : ILocalListSyncService
+{
+    private readonly IStationRepository _stationRepository;
+    private readonly ITokenRepository _tokenRepository;
+    private readonly IWebSocketConnectionPool _connectionPool;
+
+    public LocalListSyncService(
+        IStationRepository stationRepository,
+        ITokenRepository tokenRepository,
+        IWebSocketConnectionPool connectionPool)
+    {
+        _stationRepository = stationRepository;
+        _tokenRepository = tokenRepository;
+        _connectionPool = connectionPool;
+    }
+
+    public async Task PushFullListAsync(string stationId, CancellationToken ct)
+    {
+        var station = await _stationRepository.GetStationAsync(stationId, ct);
+        var allTokens = await _tokenRepository.GetAllActiveTokensAsync(ct);
+
+        int newVersion = station.LocalListVersion + 1;
+
+        var authList = allTokens.Select(t => new AuthorizationDataDto(
+            IdToken: new IdTokenDto(t.Uid, t.TokenType),
+            IdTokenInfo: new IdTokenInfoDto(
+                Status: t.IsBlocked ? IdTokenStatus.Blocked.ToString() : IdTokenStatus.Accepted.ToString(),
+                CacheExpiryDateTime: t.ExpiresAtUtc?.ToString("o")
+            )
+        )).ToList();
+
+        var payload = new SendLocalListRequestDto(
+            VersionNumber: newVersion,
+            UpdateType: UpdateType.Full.ToString(),
+            LocalAuthorizationList: authList
+        );
+
+        var status = await SendLocalListCallAsync(stationId, payload, ct);
+        if (status == SendLocalListStatus.Accepted)
+        {
+            await _stationRepository.UpdateLocalListVersionAsync(stationId, newVersion, ct);
+        }
+    }
+
+    public async Task PushDifferentialUpdateAsync(string stationId, List<AuthorizationDataDto> changedTokens, CancellationToken ct)
+    {
+        var station = await _stationRepository.GetStationAsync(stationId, ct);
+        int targetVersion = station.LocalListVersion + 1;
+
+        var payload = new SendLocalListRequestDto(
+            VersionNumber: targetVersion,
+            UpdateType: UpdateType.Differential.ToString(),
+            LocalAuthorizationList: changedTokens
+        );
+
+        var status = await SendLocalListCallAsync(stationId, payload, ct);
+
+        switch (status)
+        {
+            case SendLocalListStatus.Accepted:
+                await _stationRepository.UpdateLocalListVersionAsync(stationId, targetVersion, ct);
+                break;
+
+            case SendLocalListStatus.VersionMismatch:
+                // Recovery strategy: Mismatch detected, trigger full resynchronization
+                await PushFullListAsync(stationId, ct);
+                break;
+
+            case SendLocalListStatus.Failed:
+            case SendLocalListStatus.UpdateNotSupported:
+                // Log failure or raise operational alert
+                break;
+        }
+    }
+
+    private async Task<SendLocalListStatus> SendLocalListCallAsync(string stationId, SendLocalListRequestDto request, CancellationToken ct)
+    {
+        string messageId = Guid.NewGuid().ToString("N");
+        var rpcCall = new object[] { 2, messageId, "SendLocalList", request };
+        byte[] buffer = JsonSerializer.SerializeToUtf8Bytes(rpcCall);
+
+        var responseJson = await _connectionPool.SendAndAwaitResponseAsync(stationId, messageId, buffer, TimeSpan.FromSeconds(30), ct);
+        
+        using var doc = JsonDocument.Parse(responseJson);
+        var root = doc.RootElement;
+        
+        // Unpack CallResult: [3, messageId, payload]
+        var responsePayload = root[2];
+        string statusStr = responsePayload.GetProperty("status").GetString()!;
+
+        return Enum.Parse<SendLocalListStatus>(statusStr, ignoreCase: true);
+    }
+}
+
+```
+
+---
+
+## 45.5.5. Offline Validation Logic & Edge Cases
+
+When an RFID card is tapped at an offline EVSE:
+
+1. **Check Local Auth List**: Query the internal local database for the matching `idToken.id` and `idToken.type`.
+
+2. **Evaluate Expiry & Status**:
+
+* If `status == "Accepted"` AND `cacheExpiryDateTime` > Current Time $\rightarrow$ **Authorize Charging**.
+* If `status == "Blocked"` OR `status == "Expired"` $\rightarrow$ **Reject Charging**.
+* If `idToken` is **Not Found**:
+* Check `LocalAuthListWithoutAuth` configuration variable:
+* If `true` $\rightarrow$ Allow emergency/fallback charge up to maximum allowed energy limit.
+* If `false` $\rightarrow$ Reject charging.
+
+3. **Queue Offline Transactions**: Store transactions locally with an `OfflineCreated` flag until reconnection, then batch push via OCPP `TransactionEvent` messages.
+
+
+# 46. Quality Gate
 
 Before finalizing any electric-mobility implementation or technical answer, verify:
 
@@ -2115,7 +2995,7 @@ If one of these items materially affects correctness and cannot be determined, s
 
 ---
 
-# 44. Final Principle
+# 45. Final Principle
 
 Electric-mobility software is not merely an HTTP API plus a WebSocket.
 
