@@ -14,12 +14,12 @@ metadata:
   topics: ocpi, ocpp, electric-mobility, ev-charging, cpo, emsp, csms, evse, roaming
 ---
 
-# Electric Mobility — Agent Skill
+# Electric Mobility — Agent
 
-This skill provides protocol-aware engineering knowledge and workflows for
+This provides protocol-aware engineering knowledge and workflows for
 electric-mobility software.
 
-It is intended for agents implementing, reviewing, debugging, designing,
+It is intended for implementing, reviewing, debugging, designing,
 testing, or explaining:
 
 - EV charging infrastructure
@@ -46,7 +46,7 @@ testing, or explaining:
 
 The objective is not to memorize every protocol field.
 
-The objective is to make the agent reason correctly about:
+The objective is to reason correctly about:
 
 1. protocol boundaries;
 2. protocol versions;
@@ -61,7 +61,7 @@ The objective is to make the agent reason correctly about:
 
 ---
 
-# 1. Mandatory Agent Rules
+# 1. Mandatory Rules
 
 Before implementing or explaining anything, determine:
 
