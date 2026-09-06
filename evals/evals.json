@@ -52,6 +52,62 @@
             "The output recommends verifying the official OCPI specification before making normative claims.",
             "The output does not equate a command response of STARTED with proof that physical charging has started."
         ]
+    },
+    {
+      "id": 5,
+      "prompt": "Design a database schema for our EV platform. A Provider has Accounts, Accounts have Users, cards and chargers, and every charge should be represented by one ChargingSession row with one status. The row should point to the current tariff so invoices update when pricing changes. Please produce the entities.",
+      "expected_output": "The answer should challenge the overloaded model before producing entities. It should distinguish tenant/provider, account, user membership, credential/card/token, infrastructure ownership, authorization, command, station transaction, operational session, CDR/settlement, and invoice views where their identities or lifecycles differ. It should reject a single status for operational and financial finality and reject using only a mutable current tariff for historical billing. It should provide a relationship ledger, ownership/source-of-truth rules, snapshots, and invariants without claiming Road-style relationships are universal protocol requirements.",
+      "assertions": [
+        "The output writes or explains relationships and cardinalities before treating the requested nouns as tables.",
+        "The output distinguishes Provider or tenant, Account, User, and account-scoped membership or permissions.",
+        "The output distinguishes a card or credential medium from a token/identifier and authorization decision.",
+        "The output does not model command, station transaction, session, settlement, and billing as one status dimension.",
+        "The output recommends immutable or versioned tariff/price evidence for historical financial records.",
+        "The output identifies ownership and source of truth rather than inferring authority from storage.",
+        "The output labels vendor/product modeling choices separately from protocol requirements."
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "Our charger stopped yesterday and the app marks the session Completed, but the CPO has not sent final cost data. Finance wants to invoice now from our estimated cost. Sometimes a corrected cost arrives weeks later. How should the lifecycle and data model work?",
+      "expected_output": "The answer should separate physical stop, operational session completion, metering finality, CDR receipt, settlement confirmation, invoicing, and correction handling. It should describe provisional versus authoritative values, a version or supersession chain for corrections, idempotent downstream recalculation, and an adjustment rather than silently mutating an issued invoice. It should state that any concrete correction window is vendor- or contract-specific.",
+      "assertions": [
+        "The output states that station stop or operational completion does not imply final cost is known.",
+        "The output separates operational, metering, settlement, billing, and payout states where relevant.",
+        "The output distinguishes estimated/provisional amounts from authoritative settled amounts.",
+        "The output preserves settlement or CDR corrections as versions or a supersession chain.",
+        "The output requires idempotent correction processing and deterministic downstream recalculation.",
+        "The output does not recommend silently rewriting an issued invoice.",
+        "The output does not treat a vendor-specific settlement window as universal protocol behavior."
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "Build the architecture and delivery plan for a complete EV platform. We need a Kotlin backend, web CPO supervision, an iOS driver app, an Android driver app, OCPP-connected chargers, eMSP roaming, customer billing, and site-host reimbursement. Include the full cycle rather than only protocol adapters.",
+      "expected_output": "The answer should map CPO, eMSP, and CSMS capabilities; define backend modules and ownership; cover station onboarding, authorization, commands, sessions, metering, tariffs, CDRs, settlement, invoicing, and reimbursement; and include truthful web/iOS/Android workflows. It should give Kotlin-specific backend guidance, native iOS and Android lifecycle/security guidance, real-time recovery, observability, vertical delivery slices, and full-cycle tests.",
+      "assertions": [
+        "The output explicitly separates CPO, eMSP, and CSMS responsibilities even if deployed together.",
+        "The output covers the lifecycle from account and station onboarding through charging, CDR, invoice, and reimbursement.",
+        "The output provides Kotlin backend implementation guidance rather than only language-neutral architecture.",
+        "The output covers web supervision plus native iOS and Android product behavior.",
+        "The output accounts for mobile suspension/process death, missed real-time events, and authoritative refetch.",
+        "The output treats remote charging commands as asynchronous operations with observable evidence.",
+        "The output proposes vertical delivery slices and protocol, simulator, integration, client, and end-to-end tests."
+      ]
+    },
+    {
+      "id": 8,
+      "prompt": "Implement our C# CPO/eMSP platform connection to Gireve over OCPI 2.2.1. Please give us the production architecture, exact integration workflow, supervision screens, and testing/certification strategy.",
+      "expected_output": "The answer should use C#/.NET-specific architecture and distinguish OCPI 2.2.1 standard behavior, the exact selected Gireve implementation-guide profile, and bilateral onboarding configuration. It should require the current guide/version and assigned identities before asserting profile details, isolate Gireve behavior in an adapter, cover CPO/eMSP sender/receiver roles, synchronization, authorization, commands, Sessions/CDRs, corrections, multi-tenancy, operational supervision, and certification evidence.",
+      "assertions": [
+        "The output distinguishes standard OCPI from Gireve profile and bilateral requirements.",
+        "The output asks for or records the exact Gireve guide version/date and connection role before normative implementation claims.",
+        "The output provides C#/.NET-specific implementation guidance.",
+        "The output isolates Gireve extensions, validation, headers, and policies in a partner adapter rather than the core domain.",
+        "The output covers CPO and eMSP module directions, identities, synchronization, commands, Sessions, and CDRs.",
+        "The output includes a conformance matrix and tests for duplicates, outages, restart, credential rotation, and corrections.",
+        "The output includes operational supervision for connection health, lag, retries, rejected payloads, and reconciliation."
+      ]
     }
   ]
 }
