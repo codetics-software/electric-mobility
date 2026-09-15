@@ -151,3 +151,5 @@ $RECYCLE.BIN/
 
 # Windows shortcuts
 *.lnk
+mcp-server/node_modules/
+**-lock.json

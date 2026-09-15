@@ -1,0 +1,6 @@
+{
+    "$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+    "name":"electric-mobility",
+    "author":"Codetics",
+    "keywords":"ocpp,ocpi,gireve,supervision,electric,ev,vehicle,charging station,charge point"
+}
