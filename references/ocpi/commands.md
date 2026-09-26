@@ -268,7 +268,7 @@ The CPO translates OCPI Commands to OCPP messages (RemoteStartTransaction, Remot
 
 - **Treating Step 1 `ACCEPTED` as success**: It only means the CPO will try. Wait for the Step 2 callback before confirming to the driver
 - **Not handling callback timeout**: If the charger is offline, the callback may never arrive. Always implement a timeout that surfaces an error to the driver
-- **Missing hub routing headers (2.2.1+)**: In hub environments, `OCPI-to-country-code` and `OCPI-to-party-id` must be set so the hub routes the command to the correct CPO
+- **Missing hub routing headers (2.2+)**: In hub environments, `OCPI-to-country-code` and `OCPI-to-party-id` must be set so the hub routes the command to the correct CPO
 - **Ignoring `EVSE_OCCUPIED` in real-time**: If the driver's selected EVSE is already in use, surface this immediately rather than waiting for a timeout
 
 ---

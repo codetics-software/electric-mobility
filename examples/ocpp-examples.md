@@ -1,6 +1,27 @@
-# OCPP Canonical Examples
+# OCPP wire examples
 
-Source: OCPP 1.6 JSON schemas + specification.
+Sources: the bundled OCA-derived OCPP 1.6, 2.0.1, and 2.1 message cards and runtime guidance.
+
+These are illustrative fixtures. For the exact action contract, use the matching card under `references/ocpp/messages/<version>/`; validate the selected use case and security profile before sending.
+
+## OCPP 2.0.1 startup and transaction start
+
+```json
+[2,"boot-001","BootNotification",{"chargingStation":{"model":"AC-22","vendorName":"Example"},"reason":"PowerUp"}]
+[3,"boot-001",{"currentTime":"2026-09-26T10:00:00Z","interval":300,"status":"Accepted"}]
+[2,"tx-001","TransactionEvent",{"eventType":"Started","timestamp":"2026-09-26T10:01:00Z","triggerReason":"CablePluggedIn","seqNo":0,"transactionInfo":{"transactionId":"station-tx-001"},"evse":{"id":1,"connectorId":1}}]
+[3,"tx-001",{}]
+```
+
+The transaction ID is assigned by the station and subsequent events use the same ID with their own sequence numbers. Boot acceptance and transaction start are separate facts. See [BootNotification](../references/ocpp/messages/2.0.1/BootNotification.md) and [TransactionEvent](../references/ocpp/messages/2.0.1/TransactionEvent.md).
+
+## OCPP 2.1 unconfirmed periodic stream
+
+```json
+[6,"stream-001","NotifyPeriodicEventStream",{"id":123,"pending":0,"basetime":"2026-09-26T10:00:00Z","data":[{"t":0,"v":"230.4"},{"t":5,"v":"230.2"}]}]
+```
+
+There is no CALLRESULT for SEND. Each `t` is a number of seconds from `basetime`, per the June 2026 errata. See [NotifyPeriodicEventStream](../references/ocpp/messages/2.1/NotifyPeriodicEventStream.md).
 
 ## OCPP-J Wire Format
 

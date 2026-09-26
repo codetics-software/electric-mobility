@@ -2,11 +2,12 @@
 name: electric-mobility
 description: >
   Build complete electric-mobility products across backend, web, iOS, and
-  Android, including C#/.NET and Kotlin systems. Covers EV supervision,
+  Android, using Java, Kotlin, Swift, C#, Rust, Go, Python, and TypeScript. Covers EV supervision,
   eMSP, CPO, CSMS, OCPI, OCPP, Gireve interoperability, EVSEs, roaming,
   sessions, CDRs, tariffs, billing, authorization, smart charging,
   ISO 15118, V2G, architecture, implementation, debugging, and testing.
-  Use whenever a task involves EV charging software or charging protocols.
+  Includes complete OCPP message coverage, JSON/WebSocket runtime, and charge
+  point management. Use whenever a task involves EV charging software or charging protocols.
 license: MIT
 metadata:
   author: Codetics
@@ -103,10 +104,14 @@ Load only the references that materially apply, but load them before designing c
 | Complete eMSP/CPO/CSMS platform, service architecture, C#/.NET backend, Kotlin backend, delivery roadmap | `references/full-platform-blueprint.md` |
 | Web supervision, Blazor/.NET MAUI, iOS/SwiftUI, Android/Kotlin/Compose, maps, real-time UX | `references/supervision-and-client-apps.md` |
 | Gireve connection, hub profile, onboarding, conformance, certification, or operations | `references/gireve-interoperability.md` plus applicable OCPI references |
-| OCPI capability or module | `references/ocpi/README.md` plus the matching module reference |
+| OCPI capability or module | `references/ocpi/README.md`, `references/ocpi/versions.md`, plus the matching module reference |
+| OCPP station, CSMS, migration, or protocol debugging | `references/ocpp/README.md`, matching version reference, `references/ocpp/messages/<version>/<Action>.md` for each relevant action, and the runtime/management guide as needed |
+| Code, review, incident debugging, or security in Java, Kotlin, Swift, C#, Rust, Go, Python, or TypeScript | `references/implementation-and-debugging.md` |
 | Cross-cutting task | all applicable references; reconcile terminology explicitly |
 
 When an OCPI task matches a module under `references/ocpi/`, consult it before generating implementation code. Do not reconstruct a module from memory when a reference exists.
+
+For OCPP-J, the bundled per-action cards contain wire fields, required status, constraints, enums, and nested types for all covered versions. Read the relevant card instead of requiring the user's device to contain OCA PDFs or downloading full documentation archives. Combine it with the version's behavior guide and WebSocket runtime guide. Check official errata only when a recent edition, certification claim, or disputed detail requires it.
 
 Vendor documentation can teach useful product relationships and workflows, but it is not automatically normative for OCPI, OCPP, or another vendor. Extract the concept, label vendor-specific behavior, and verify protocol claims against the selected official specification.
 
@@ -156,7 +161,7 @@ Never invent:
 * capabilities;
 * version-specific behavior.
 
-If exact protocol behavior matters, verify the official specification before making a normative claim.
+For exact OCPP-J wire fields, use the bundled versioned message cards and behavior guides. For exact OCPI behavior, use the matching version/module reference. Check the current official source when certification, a newer edition, or an unresolved discrepancy requires a normative claim beyond these references.
 
 Clearly distinguish:
 
@@ -384,14 +389,16 @@ Relevant protocol generations include:
 
 ```text
 OCPI:
+  2.0 (legacy; no Commands module)
+  2.1 (deprecated; introduced Commands)
   2.1.1
-  2.2.1
-  2.3.0
+  2.2 (deprecated) / 2.2.1
+  2.3.0 (core edition and optional module edition must also be identified)
 
 OCPP:
-  1.6
-  2.0.1
-  2.1
+  1.6 (JSON/WebSocket or SOAP)
+  2.0.1 (edition, errata, and certification profile)
+  2.1 (edition, errata, and certification profile)
 ```
 
 Older versions remain widely deployed.
@@ -458,6 +465,7 @@ references/
   gireve-interoperability.md
   ocpi/
     README.md
+    versions.md
     credentials.md
     locations.md
     sessions.md
@@ -481,7 +489,7 @@ The references are the first implementation source inside this repository. They 
 When the task involves OCPI:
 
 ```text
-1. Identify the OCPI version.
+1. Identify the OCPI version and read `references/ocpi/versions.md` for the matching source and revision.
 2. Identify the module.
 3. Read references/ocpi/README.md.
 4. Read the module-specific reference file.
@@ -538,7 +546,7 @@ Use the repository reference corresponding to the requested capability:
 | Remote start/stop/reservation/unlock commands | `references/ocpi/commands.md` |
 | Smart-charging constraints and profiles | `references/ocpi/charging-profiles.md` |
 | Roaming-hub client information | `references/ocpi/hub-client-info.md` |
-| Ad-hoc/direct payment flows | `references/ocpi/direct-payment.md` |
+| 2.3.0 Payments terminal and financial advice flows | `references/ocpi/direct-payment.md` |
 | Advance booking | `references/ocpi/booking.md` |
 | Billing/invoice reconciliation | `references/ocpi/invoice-reconciliation.md` |
 | Overall module/version/role architecture | `references/ocpi/README.md` |
@@ -850,15 +858,11 @@ Do not silently drop it if doing so changes semantics.
 For version migrations, use:
 
 ```text
-2.1.1
+source version, including legacy 2.0 or 2.1 when relevant
   ->
 semantic mapping
   ->
-2.2.1
-  ->
-semantic mapping
-  ->
-2.3.0
+target version and optional module edition
 ```
 
 rather than mechanical field/message renaming.
@@ -1605,6 +1609,17 @@ failure behavior
 # 16. OCPP
 
 OCPP is the station-management protocol between charging stations and a CSMS.
+
+For any version-specific design, implementation, or diagnosis, read
+`references/ocpp/README.md` and its version guide. For OCPP code, use
+`references/ocpp/message-catalog.md` to find the action and read its bundled
+`references/ocpp/messages/<version>/<Action>.md` card for the request,
+response, required fields, nested types, constraints, and enums. Read
+`references/ocpp/websocket-and-runtime.md` for connection and RPC behavior
+and `references/ocpp/charge-point-management.md` for operational state.
+No user-side PDF or ZIP is needed for routine implementation. For normative
+certification claims or disputed newer-edition details, verify OCA's current
+edition, errata, and applicable profile.
 
 Typical architecture:
 
@@ -2571,6 +2586,10 @@ This prevents vendor-specific assumptions from contaminating the core domain mod
 
 When generating code:
 
+Read `references/implementation-and-debugging.md` for the chosen language and
+for failure analysis or security work. Apply its checks to the actual protocol
+boundary and code path; do not paste all language guidance into every answer.
+
 1. Match the user's existing language and framework.
 2. Do not introduce a new framework without justification.
 3. Keep protocol DTOs separate from domain entities.
@@ -2983,5 +3002,3 @@ invented protocol behavior
 ```
 
 The goal is to produce software that interoperates with real charging infrastructure, not merely software that looks correct in a code review.
-
-

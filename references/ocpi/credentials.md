@@ -121,7 +121,9 @@ Post-handshake state:
 
 ### `VersionNumber` Enum
 
-`"2.0"`, `"2.1"`, `"2.1.1"`, `"2.2"`, `"2.2.1"`, `"2.3"`
+`"2.0"`, `"2.1"`, `"2.1.1"`, `"2.2"`, `"2.2.1"`, `"2.3.0"`
+
+`2.1` and `2.2` are deprecated in the current version definition; discovery can still encounter them in legacy integrations. Match the selected specification revision when parsing this open enum.
 
 ### `ModuleID` (Endpoint Identifier)
 
@@ -136,9 +138,12 @@ Each endpoint in `/versions/{version}` response has an `identifier`:
 | `tariffs` | Tariffs |
 | `tokens` | Tokens |
 | `commands` | Commands |
-| `charging_profiles` | ChargingProfiles (2.2.1+) |
-| `hub_client_info` | HubClientInfo (2.2.1+) |
-| `direct_payment` | DirectPayment (2.3.0+) |
+| `chargingprofiles` | ChargingProfiles (2.2+) |
+| `hubclientinfo` | HubClientInfo (2.2+) |
+| `invoicereconciliation` | InvoiceReconciliation (2.3.0 core edition 2) |
+| `payments` | Payments (2.3.0 Payments package) |
+
+Booking uses a separate 2.3.0 package; read that package's version endpoint and module identifier instead of inferring it from the core list. These are wire identifiers, not snake_case application names.
 
 ---
 
@@ -148,8 +153,8 @@ Each endpoint in `/versions/{version}` response has an `identifier`:
 - `roles` field in Credentials object doesn't exist — only CPO or eMSP, identified by the URL path (`/ocpi/cpo/` vs `/ocpi/emsp/`)
 - `party_id` and `country_code` top-level on Credentials (not inside `roles`)
 
-### 2.2.1
-- **`roles` array** introduced — a single platform can declare multiple roles (CPO, eMSP, Hub, NSP, NAP, SCSP) in one Credentials object
+### 2.2 / 2.2.1
+- **`roles` array** introduced in 2.2 — a single platform can declare multiple roles (CPO, eMSP, Hub, NSP, NAP, SCSP) in one Credentials object
 - `party_id` and `country_code` move inside each role entry
 - Hub routing headers added to all requests (not part of Credentials object itself, but established after handshake)
 
@@ -190,7 +195,7 @@ Both parties must agree on a single version for the connection. Choose the **hig
 - **Forgetting TOKEN_A scope**: Accepting TOKEN_A on non-credentials endpoints is a security bug — always validate token type before routing
 - **Missing step 4**: The Receiver must also call back into the Sender's `/versions` endpoint to discover the Sender's module URLs — many implementations skip this and hardcode URLs
 - **Stale module URLs**: After a `PUT /credentials` rotation, re-fetch `/versions/{version}` to get updated endpoint URLs — the partner may have changed their URL structure
-- **Multi-role confusion (2.2.1+)**: A platform with CPO + eMSP roles sends both in the same Credentials POST. The receiver must store both role contexts
+- **Multi-role confusion (2.2+)**: A platform with CPO + eMSP roles sends both in the same Credentials POST. The receiver must store both role contexts
 
 ---
 

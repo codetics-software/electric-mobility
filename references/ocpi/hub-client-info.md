@@ -14,7 +14,8 @@ The HubClientInfo module lets a **Hub inform connected platforms about which oth
 | Version | Available |
 |---|---|
 | 2.1.1 | No |
-| 2.2.1 | Yes (new in 2.2.1) |
+| 2.2 | Yes — introduced in the 2.2 line |
+| 2.2.1 | Yes |
 | 2.3.0 | Yes |
 
 ---

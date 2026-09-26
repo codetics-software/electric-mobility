@@ -1,111 +1,24 @@
-# OCPI — InvoiceReconciliation Module
+# OCPI Invoice Reconciliation
 
-## Purpose
+Source: [OCPI 2.3.0 core module](https://github.com/ocpi/ocpi/blob/2.3.0/release/core/mod_invoice_reconciliation.asciidoc). Pin core edition 2, such as [`v2.3.0-ed2`](https://github.com/ocpi/ocpi/tree/v2.3.0-ed2), and partner capability before implementation. The edition 2 tag exists even though a status cell in the repository README has not caught up.
 
-The InvoiceReconciliation module provides a **standardized mechanism for CPOs and eMSPs to reconcile billing discrepancies** — when the eMSP's calculated invoice amount differs from the CPO's expected total. Rather than email exchanges and custom reports, both sides exchange structured reconciliation data through OCPI.
+## Purpose and ownership
 
-> This is an **optional module**, available in **2.3.0 edition 2** only (not in the initial 2.3.0 release or the bookings branch).
+The module identifier is `invoicereconciliation`. It exchanges an **InvoiceReconciliationRecord**: the issuing party's invoice ID and the explicit CDR IDs included in that invoice. It does not transfer the invoice document, conduct payment, or define a dispute workflow. A CPO usually issues the record for direct billing; an eMSP may issue it for reverse billing. Either can be sender or receiver according to who invoices.
 
----
+The receiver compares the listed CDRs with its own records and the separately delivered invoice. Do not infer invoice membership from billing period or CDR arrival time; a late CDR may be omitted from one invoice and appear in another.
 
-## Version Availability
+## Wire contract
 
-| Version | Available |
-|---|---|
-| 2.1.1 | No |
-| 2.2.1 | No |
-| 2.3.0 (edition 1) | No |
-| 2.3.0 (edition 2) | Yes — optional |
+The official `InvoiceReconciliationRecord` has `country_code`, `party_id`, `id`, `invoice_id`, one or more `cdrs` identifiers, and `last_updated`. There are no standard `status`, `disputes`, `expected_amount`, `total_disputed_amount`, or `resolution` fields in this module. Keep any local dispute case as a separate product-domain concept.
 
----
+- Sender interface: paginated `GET` with `date_from`, `date_to`, `offset`, and `limit` for pull/recovery.
+- Receiver interface: `POST` new record, `PUT` updated record, `GET` one record, and `DELETE` an erroneous record. The object identity is scoped by country code, party ID, and record ID; use the exact endpoint paths in the pinned specification.
+- Push updates if supported; also reconcile with pull after outages. An updated record replaces its previous content. `DELETE` says the record itself was erroneous; invoice/CDR corrections can use an updated record.
 
-## Why Reconciliation Is Needed
+## Implementation checks
 
-Even with perfectly implemented OCPI, billing discrepancies occur due to:
-
-- **Rounding differences**: Different implementations apply `step_size` rounding differently
-- **Clock skew**: CPO and eMSP clocks differ by seconds, affecting time-based tariff periods
-- **CDR retries**: A CDR pushed twice (network failure + retry) may cause duplicate processing
-- **Tariff interpretation**: Complex tariff elements with restrictions can be interpreted differently
-- **Credit CDR timing**: The original CDR and credit CDR are in different billing cycles
-
----
-
-## Module Concept
-
-The module introduces a structured workflow:
-
-```
-[Monthly billing cycle]
-eMSP processes all CDRs from CPO
-  ↓
-eMSP generates invoice for CPO
-  ↓
-CPO validates invoice against its own CDR totals
-  ↓
-If discrepancy found:
-  CPO → POST InvoiceReconciliation (list of disputed CDR IDs + amounts)
-  eMSP → reviews, accepts or rejects each dispute
-  Both → reach agreement or escalate
-  ↓
-Settled amounts confirmed
-```
-
----
-
-## Key Objects
-
-### `InvoiceReconciliation`
-
-| Field | Type | Description |
-|---|---|---|
-| `id` | string | Unique reconciliation ID |
-| `invoice_reference` | string | Reference to the disputed invoice |
-| `period_start` | DateTime | Billing period start |
-| `period_end` | DateTime | Billing period end |
-| `status` | ReconciliationStatus | Current state |
-| `disputes` | CdrDispute[] | List of disputed CDRs |
-| `total_disputed_amount` | Price | Sum of all disputes |
-| `last_updated` | DateTime | |
-
-### `CdrDispute`
-
-| Field | Type | Description |
-|---|---|---|
-| `cdr_id` | string | CDR being disputed |
-| `expected_amount` | Price | What CPO expected |
-| `invoiced_amount` | Price | What eMSP invoiced |
-| `difference` | Price | The discrepancy |
-| `reason` | string | Description of the dispute |
-| `resolution` | DisputeResolution? | How it was resolved |
-
-### `ReconciliationStatus`
-
-| Value | Meaning |
-|---|---|
-| `PENDING` | Submitted, awaiting review |
-| `UNDER_REVIEW` | eMSP is reviewing |
-| `PARTIALLY_RESOLVED` | Some disputes settled |
-| `RESOLVED` | All disputes settled |
-| `REJECTED` | eMSP rejected the reconciliation request |
-
----
-
-## Implementation Notes
-
-### When to Use
-Only necessary for high-volume CPO/eMSP relationships with regular billing cycles. For low-volume bilateral connections, email reconciliation may be sufficient.
-
-### Idempotency
-Reconciliation IDs must be stable — if a CPO resubmits the same reconciliation (retried POST), the eMSP must detect the duplicate by `invoice_reference` and return the existing record.
-
-### Integration with CDRs
-The CDR IDs in `CdrDispute` reference CDRs already exchanged via the CDRs module. Both parties must have already processed those CDRs before reconciliation begins.
-
----
-
-## Spec References
-
-- 2.3.0 edition 2: `mod_invoice_reconciliation.asciidoc` — `2.3.0/release/core` (edition 2 tag/commit)
-
-> Note: The `2.3.0/release/bookings` branch does NOT include this module — it branched before edition 2. Use the core branch directly.
+- Make retries idempotent using the scoped record ID and content/version evidence. Do not deduplicate by `invoice_id` alone: an invoice and a record have different identities.
+- Resolve listed CDR IDs within the correct partner and party scope. Detect missing, duplicated, credited, or corrected CDRs without silently changing the original record.
+- Retain the invoice document and payment process outside OCPI. Record which local invoice and CDR snapshots were compared so later corrections remain auditable.
+- Test direct and reverse billing, pagination after downtime, late CDR arrival, record updates, duplicate delivery, deletion, and cross-party IDs.

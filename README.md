@@ -1,92 +1,62 @@
-# ⚡ Electric Mobility Skill — Codetics
+# Electric Mobility Skill by Codetics
 
-An AI agent skill for building complete electric-mobility products—from CPO/eMSP/CSMS backends and interoperability to web supervision, native iOS, and native Android applications. Covers OCPI, OCPP, Gireve integration, C#/.NET, Kotlin, Swift, and full charging-to-settlement lifecycles.
+I build electric mobility software across the full charging lifecycle: CPO, eMSP, and CSMS platforms; OCPI roaming; OCPP station management; charging sessions, tariffs, CDRs, billing, and operator and driver applications. This skill records the engineering decisions I expect in production systems: clear protocol boundaries, version-aware implementations, observable asynchronous operations, secure integrations, and correct financial history.
 
-**Publisher:** [Codetics](https://codetics.fr)
+For my complete work and services, visit [codetics.fr](https://codetics.fr).
 
----
+## What the skill helps with
 
-## What this skill covers
-
-| Domain | Content |
+| Area | Guidance |
 |---|---|
-| **Ecosystem** | Actor roles (CPO, eMSP, Hub, SCSP, NSP, NAP), physical hierarchy (Location → EVSE → Connector) |
-| **Domain modeling** | Provider/Account/User boundaries, cards vs tokens, ownership, cardinality, identity scopes, snapshots, state vectors, policy groups |
-| **Lifecycles** | RFID and remote charging, metering, stop/finalization, late settlement, corrections, payment terminals, reconciliation |
-| **OCPI** | Authentication/registration, all 10 modules (Locations, Sessions, CDRs, Tokens, Tariffs, Commands, ChargingProfiles, Credentials, Versions, HubClientInfo), transport conventions, pagination, Push/Pull patterns |
-| **OCPP 1.6** | All CP↔CS messages, smart charging profiles, reservation, configuration management |
-| **OCPP 2.0.1 / 2.1** | TransactionEvent model, Device Model, ISO 15118 Plug & Charge, V2G |
-| **Full platform** | Complete CPO/eMSP/CSMS capability map, modular architecture, delivery slices, security, observability, C#/.NET and Kotlin backends |
-| **Applications** | Web supervision and portals, Blazor/.NET MAUI, iOS/SwiftUI, Android/Kotlin/Compose, maps, real-time state, offline recovery, accessibility |
-| **Interoperability** | Direct OCPI and Gireve hub profiles, conformance matrices, onboarding, synchronization, certification, reconciliation |
-| **Architecture** | CSMS design, OCPI service patterns, multi-party platforms, common pitfalls |
-| **French market** | AFIREV IDs, IRVE decree, national NAP, key roaming hubs |
+| OCPI | All six numbered repository versions from 2.0 through 2.3.0; roles, credentials, modules, push/pull, hubs, optional module editions, and interoperability |
+| OCPP | Self-contained field cards for every JSON action in 1.6 (28), 2.0.1 (64), and 2.1 (90 plus SEND); versioned payloads, WebSocket runtime, station/CSMS lifecycles, security, smart charging, V2X, and debugging |
+| Product and domain | CPO/eMSP/CSMS architecture, EVSE relationships, authorization, charging lifecycles, supervision, mobile apps, settlement, and reconciliation |
+| Engineering | Practical coding guidance for Java, Kotlin, Swift, C#, Rust, Go, Python, and TypeScript; server debugging, bug discovery, security reviews, and regression tests |
 
-## Files
+The skill separates protocol requirements from implementation choices and vendor behavior. It sends agents to the relevant reference before they generate code or make version-specific claims.
 
+## Contents
+
+```text
+SKILL.md                              Skill entrypoint and reference routing
+references/ocpi/README.md             OCPI version and module index
+references/ocpi/versions.md            All repository versions and migration decisions
+references/ocpi/*.md                  Module-specific engineering references
+references/ocpp/README.md             OCPP source and version index
+references/ocpp/ocpp-1.6.md           OCPP 1.6 implementation and diagnosis
+references/ocpp/ocpp-2.0.1.md         OCPP 2.0.1 implementation and diagnosis
+references/ocpp/ocpp-2.1.md           OCPP 2.1 implementation and diagnosis
+references/ocpp/message-catalog.md     Complete OCPP action inventory and DTO workflow
+references/ocpp/messages/<version>/    Per-action request, response, nested types, and enums
+references/ocpp/websocket-and-runtime.md
+                                      WebSocket handshake, RPC frames, concurrency
+references/ocpp/charge-point-management.md
+                                      End-to-end station and CSMS implementation
+references/ocpp/errata-2026-06.md      Actionable 2.x behavior corrections
+references/implementation-and-debugging.md
+                                      Eight-language, server, and security guidance
+references/domain-relationships.md     Ownership, identity, and data modeling
+references/charging-lifecycles.md      End-to-end charging and failure flows
+references/full-platform-blueprint.md  Platform architecture and delivery
+references/supervision-and-client-apps.md
+                                      Operator, web, and mobile products
+references/gireve-interoperability.md  Hub integration and conformance
+examples/                             OCPI and OCPP wire examples
 ```
-SKILL.md                              ← Main skill and progressive loading rules
-references/
-  domain-relationships.md             ← Vendor-neutral domain graph and schema rules
-  charging-lifecycles.md              ← End-to-end lifecycle and failure playbooks
-  full-platform-blueprint.md          ← Full eMSP/CPO/CSMS and C#/.NET/Kotlin architecture
-  supervision-and-client-apps.md      ← Web, iOS, and Android product guidance
-  gireve-interoperability.md          ← Gireve profile, operations, and conformance playbook
-  ocpi/                               ← Module-specific OCPI implementation references
-examples/
-  ocpi-examples.md                    ← Canonical OCPI JSON examples from spec
-  ocpp-examples.md                    ← Canonical OCPP 1.6 wire-format examples
-README.md                             ← This file
-```
 
-## When to use
+## Sources
 
-Trigger this skill whenever working on:
-- OCPI integration (CPO ↔ eMSP, roaming hubs like Gireve / EVRoaming)
-- Complete eMSP, CPO, or combined platform development
-- CSMS (Central System / Charge Management System) development
-- C#/.NET or Kotlin backend implementation
-- Web-based EV network supervision and operator portals, including Blazor
-- Cross-platform C# applications with .NET MAUI
-- Native iOS driver/operator apps with Swift and SwiftUI
-- Native Android apps with Kotlin and Jetpack Compose
-- Charge point firmware or OCPP client implementation
-- EV driver, fleet, installer, support, finance, and site-host experiences
-- Gireve onboarding, OCPI conformance, certification, and production operations
-- Smart charging / load management systems
-- NAP / IRVE compliance in France
-- Tariff modeling and billing pipelines for EV charging
+- [OCPI official specification repository](https://github.com/ocpi/ocpi). Select the negotiated version and the appropriate 2.3.0 core or optional module release branch.
+- [Open Charge Alliance OCPP versions](https://openchargealliance.org/protocols/open-charge-point-protocol/). The skill contains field-level JSON message references and implementation guidance, so readers need no local PDFs or downloaded ZIPs. Check the applicable edition, errata, and certification profile when conformance or a disputed detail depends on them.
 
-## Installation
+The references summarize the inspected OCA JSON schema packages and specification behavior; they are not copies of the standards. The 2.x schema packages predate the newest prose editions, so verify later errata for edition-specific conformance.
 
-Install this skill with:
+## Install
 
-```bash
-npx skills add https://github.com/codetics-software/electric-mobility
-```
-Or 
 ```bash
 npx skills add codetics-software/electric-mobility
 ```
 
-## Key concepts at a glance
-
-```
-OCPP: Charge Point ←→ CSMS   (WebSocket, JSON-RPC style)
-OCPI: CPO backend  ←→ eMSP   (HTTPS REST, JSON)
-
-Org:      Provider/Tenant → Account → Membership/User
-Physical: Location → Station → EVSE → Connector
-Auth:     Credential → Authorization decision → Charging attempt
-Runtime:  Command ≠ Transaction ≠ Energy delivery ≠ Session
-Billing:  Session → CDR/settlement version → Invoice/adjustment
-Remote:   eMSP Command → CPO → OCPP → Station → observed async result
-Product:  Web + iOS + Android → product APIs → CPO/eMSP/CSMS modules
-Roaming:  direct OCPI or hub profile (for example Gireve) → reconciliation
-```
-
-
-
 ## License
 
-Based on publicly available OCPI and OCPP specifications. Skill content © Codetics. Specifications © EVRoaming Foundation / Open Charge Alliance.
+Skill content © Codetics, MIT license. OCPI specifications © EVRoaming Foundation; OCPP specifications © Open Charge Alliance.

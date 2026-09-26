@@ -14,7 +14,8 @@ The ChargingProfiles module enables **smart charging** — the SCSP (Smart Charg
 | Version | Available |
 |---|---|
 | 2.1.1 | No — not in 2.1.1 |
-| 2.2.1 | Yes (new in 2.2.1) |
+| 2.2 | Yes — introduced in the 2.2 line |
+| 2.2.1 | Yes |
 | 2.3.0 | Yes |
 
 ---
@@ -151,8 +152,8 @@ CPO → POST {response_url}
 
 ## Version Differences
 
-### 2.2.1
-- Full module introduced (not in 2.1.1)
+### 2.2 / 2.2.1
+- Full module introduced in 2.2 (not in 2.1.1)
 - `W` and `A` unit support
 - GET, PUT, DELETE on sessions
 - Async callback pattern
