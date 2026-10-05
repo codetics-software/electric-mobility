@@ -174,9 +174,10 @@ Immediately invalidates a lost or stolen card on the CPO's local whitelist.
 - `contract_id` format clarified (eMI3 standard)
 
 ### 2.3.0
-- Expanded `CdrToken` (used in CDRs/Sessions) with `country_code` + `party_id` for global identification
-- Token type `AD_HOC_USER` semantics clarified for AFIR direct payment flows
-- Stronger guidance on `NEVER` whitelist behavior — CPO must reject if eMSP is unreachable
+- Keep token identity scoped to its owning party and token type. `CdrToken.country_code`/`party_id` were already required in 2.2.1, not newly added in 2.3.0.
+- Follow [roles.md](roles.md) for 2.3.0 hub-reachable parties and EMSP ownership; a routing header or accepted_service_providers name is not token authorization.
+- Apply transport extensibility without relaxing required Token fields or authorization rules. Keep existing whitelist behavior tied to the selected specification.
+- Read [ocpi-2.3.0.md](ocpi-2.3.0.md) for verified changes; do not infer novel Token fields from Payments or AFIR terminology.
 
 ---
 

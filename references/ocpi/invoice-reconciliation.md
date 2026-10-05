@@ -1,6 +1,6 @@
 # OCPI Invoice Reconciliation
 
-Source: [OCPI 2.3.0 core module](https://github.com/ocpi/ocpi/blob/2.3.0/release/core/mod_invoice_reconciliation.asciidoc). Pin core edition 2, such as [`v2.3.0-ed2`](https://github.com/ocpi/ocpi/tree/v2.3.0-ed2), and partner capability before implementation. The edition 2 tag exists even though a status cell in the repository README has not caught up.
+Source: [OCPI 2.3.0 core module](https://github.com/ocpi/ocpi/blob/2.3.0/release/core/mod_invoice_reconciliation.asciidoc). Pin an agreed core edition 2 artifact and partner capability before implementation. The [`v2.3.0-ed2`](https://github.com/ocpi/ocpi/tree/v2.3.0-ed2) tag exists, while upstream's compatibility table still labels edition 2 planned; verify its content and adoption without inferring certification. See [ocpi-2.3.0.md](ocpi-2.3.0.md) for source pins.
 
 ## Purpose and ownership
 

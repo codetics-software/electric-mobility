@@ -7,6 +7,10 @@ The Tariffs module exchanges **pricing structures** so that eMSPs can show drive
 **Data owner**: CPO  
 **Direction**: CPO (Sender) → eMSP / NSP / NAP (Receiver)
 
+Examples omitting tax_included illustrate 2.2.1. In 2.3.0, tax_included is
+required and min_price/max_price use PriceLimit; see the Version Differences
+section and [2.3.0 fixtures](../../examples/ocpi-examples.md#ocpi-230-fixtures).
+
 ---
 
 ## Version Availability
@@ -15,7 +19,7 @@ The Tariffs module exchanges **pricing structures** so that eMSPs can show drive
 |---|---|
 | 2.1.1 | Optional |
 | 2.2.1 | Optional |
-| 2.3.0 | Optional (but AFIR mandates tariff transparency) |
+| 2.3.0 | Optional; assess regional transparency duties separately |
 
 ---
 
@@ -28,7 +32,9 @@ Tariff
         └── TariffRestrictions?     — when this element applies
 ```
 
-Each `TariffElement` is tested top-to-bottom. The first one whose `TariffRestrictions` match the current session moment applies.
+Evaluate elements in order **per tariff dimension**. The first active component
+for a given dimension applies; other dimensions can apply from later elements.
+Do not stop at the first matching element for the whole tariff.
 
 ---
 
@@ -45,8 +51,9 @@ Each `TariffElement` is tested top-to-bottom. The first one whose `TariffRestric
 | `type` | TariffType? (2.2.1+) | `AD_HOC_PAYMENT`, `PROFILE_CHEAP`, `PROFILE_FAST`, `PROFILE_GREEN`, `REGULAR` |
 | `tariff_alt_text` | DisplayText[]? | Human-readable description per language |
 | `tariff_alt_url` | URL? | Link to full tariff text |
-| `min_price` | Price? (2.2.1+) | Floor price per session |
-| `max_price` | Price? (2.2.1+) | Ceiling price per session |
+| `min_price` | Price? (2.2.1) / PriceLimit? (2.3.0) | Floor price per session |
+| `max_price` | Price? (2.2.1) / PriceLimit? (2.3.0) | Ceiling price per session |
+| `tax_included` | TaxIncluded (required in 2.3.0) | YES, NO, or N/A; do not add to a 2.2.1 wire contract |
 | `elements` | TariffElement[] | Pricing rules |
 | `start_date_time` | DateTime? | When this tariff becomes active |
 | `end_date_time` | DateTime? | When this tariff expires |
@@ -77,18 +84,18 @@ Each `TariffElement` is tested top-to-bottom. The first one whose `TariffRestric
 | Field | Type | Description |
 |---|---|---|
 | `type` | TariffDimensionType | What triggers this price |
-| `price` | number | Cost per unit (excl. VAT) |
+| `price` | number | 2.2.1: excluding VAT; 2.3.0: tax basis is defined by Tariff.tax_included |
 | `vat` | number? | VAT percentage (e.g., `20.0` for 20%) |
 | `step_size` | int | Minimum billing unit (see below) |
 
 ### `TariffDimensionType` Enum
 
-| Value | Unit | Meaning |
+| Value | Price unit / step multiplier | Meaning |
 |---|---|---|
-| `ENERGY` | Wh | Per unit of energy delivered |
+| `ENERGY` | kWh / Wh | Energy price per kWh; step_size in Wh |
 | `FLAT` | — | One-time session fee |
-| `PARKING_TIME` | seconds | Per second of parking (not charging) |
-| `TIME` | seconds | Per second of total connection time |
+| `PARKING_TIME` | hours / seconds | Parking price per hour; apply edition 2's vehicle-demand definition |
+| `TIME` | hours / seconds | Charging-time price per hour; distinct from total connection time |
 
 **`step_size` examples**:
 - `ENERGY` with `step_size: 1000` → billing rounds up to nearest kWh
@@ -201,21 +208,29 @@ Driver charges 20 kWh in 90 minutes:
 - Tariff `start_date_time` / `end_date_time` for time-bounded tariffs
 
 ### 2.3.0
-- **Major tariff object evolution** (the single biggest change in 2.3.0)
-- Richer per-component pricing model aligned with AFIR price transparency requirements
-- North American tax structure support (state/province tax fields)
-- Clearer rules on tariff inheritance when a session starts under one tariff and the tariff changes mid-session
-- `AD_HOC_PAYMENT` tariff type now required for AFIR-compliant ad-hoc charging flows
+- Required `tax_included` indicates `YES`, `NO`, or `N/A`. PriceComponent.price follows that basis rather than always excluding VAT.
+- `min_price`/`max_price` use `PriceLimit` with required `before_taxes` and optional `after_taxes`; Session/CDR costs use a different shared Price with `taxes` entries.
+- Support multiple taxes without inventing state/province-specific fields. VAT percentage on PriceComponent remains optional.
+- Edition 2 fixes a step-size example. Pricing dimensions still require correct ordered selection per dimension, quantity steps, and contractual/currency rounding.
+- Read [ocpi-2.3.0.md](ocpi-2.3.0.md) for source pins. Do not claim `AD_HOC_PAYMENT` is universally mandatory or that publishing a tariff proves AFIR compliance.
 
 ---
 
 ## Implementation Notes
 
 ### Tariff Resolution Order
-When a CPO has multiple tariff elements, evaluate them **top to bottom** and apply the first matching one. If none match, no pricing applies for that period (implementation-defined behavior).
+Evaluate elements **top to bottom for each dimension**, using the first active
+component for that dimension. ENERGY, TIME, PARKING_TIME, and FLAT can accumulate
+independently. Verify the pinned specification's behavior when a dimension has
+no active component: in the inspected 2.3.0 source, that dimension has no cost.
+A later unrestricted component can supply a defined fallback; never invent one.
 
 ### Tariff Snapshot in CDRs
-Always embed the full Tariff object in the CDR as it existed at session start. Do not reference by ID only. This is mandatory — the spec explicitly requires the tariff snapshot for billing verifiability.
+Preserve the tariffs actually used, including any applicable changes during the
+session, as immutable billing evidence. When supplied in the CDR, tariffs are
+full objects linked by ChargingPeriod.tariff_id. The CDR tariffs field has `*`
+cardinality; do not claim every wire CDR must include a tariff snapshot. Make
+required audit evidence explicit in the commercial/implementation agreement.
 
 ### Tariff Versioning
 When a tariff changes (e.g., price increase), do not modify the existing tariff. Instead:
@@ -235,10 +250,10 @@ Always provide `tariff_alt_text` in the driver's language. The `DisplayText` obj
 
 ## Common Pitfalls
 
-- **Not evaluating restrictions top-to-bottom**: Restrictions are not additive — only the first matching element applies
-- **Using tariff reference instead of snapshot in CDR**: The CDR must embed a full Tariff copy — a reference is not sufficient for billing verification
+- **Stopping at the first matching element**: Ordered selection is per dimension; later elements can supply other active dimensions.
+- **Losing tariff evidence**: An ID resolving only to the current tariff cannot reproduce historical billing. Preserve applicable snapshots; distinguish that audit policy from the wire field's optional cardinality.
 - **Ignoring `step_size`**: Round up to the next step. A 4-minute session with 5-minute step_size bills as 5 minutes. This must match between CPO calculation and eMSP verification
-- **Missing `AD_HOC_PAYMENT` tariff for AFIR (2.3.0)**: AFIR-compliant operators must publish a specific tariff for contract-free ad-hoc charging
+- **Tax basis mismatch in 2.3.0**: Missing tax_included or treating all prices as VAT-exclusive can produce incorrect estimates and CDRs.
 
 ---
 

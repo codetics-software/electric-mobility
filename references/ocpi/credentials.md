@@ -24,6 +24,10 @@ The Credentials module handles the **initial handshake** between two platforms b
 
 Three tokens are involved during registration:
 
+Here “Sender” means the registration initiator and “Receiver” means the
+registration acceptor. These labels are not permanent market roles or the
+functional modules' InterfaceRole values; either platform can initiate.
+
 | Token | Created by | Used by | Purpose |
 |---|---|---|---|
 | `CREDENTIALS_TOKEN_A` | Receiver | Sender | Bootstrap — allows Sender to call `/versions` and `/credentials` only |
@@ -39,7 +43,8 @@ After the handshake:
 
 ### Out-of-Band Exchange
 
-TOKEN_A and the Sender's `/versions` URL are exchanged **outside OCPI** (email, portal, secure message). There is no in-protocol mechanism for initial contact.
+The acceptor supplies TOKEN_A and its own Versions URL **outside OCPI** through
+an agreed secure channel. There is no in-protocol mechanism for initial contact.
 
 ---
 
@@ -52,11 +57,11 @@ TOKEN_A and the Sender's `/versions` URL are exchanged **outside OCPI** (email, 
 [In OCPI]
 Step 1 — Sender discovers versions
   Sender → GET /versions (using TOKEN_A)
-  ← [{ version: "2.2.1", url: "..." }, ...]
+  ← [{ version: "2.3.0", url: "..." }, ...]
 
 Step 2 — Sender discovers endpoints for chosen version
-  Sender → GET /versions/2.2.1 (using TOKEN_A)
-  ← { version: "2.2.1", endpoints: [{ identifier: "credentials", url: "..." }, ...] }
+  Sender → GET discovered 2.3.0 details URL (using TOKEN_A)
+  ← { version: "2.3.0", endpoints: [{ identifier: "credentials", role: "SENDER", url: "..." }, ...] }
 
 Step 3 — Sender registers itself
   Sender → POST /credentials (using TOKEN_A)
@@ -65,7 +70,7 @@ Step 3 — Sender registers itself
 
 Step 4 — Receiver discovers Sender's endpoints
   Receiver → GET Sender's /versions (using TOKEN_B)
-  Receiver → GET Sender's /versions/2.2.1 (using TOKEN_B)
+  Receiver → GET Sender's discovered 2.3.0 details URL (using TOKEN_B)
   (Receiver now knows all Sender endpoints)
 
 Post-handshake state:
@@ -159,9 +164,10 @@ Booking uses a separate 2.3.0 package; read that package's version endpoint and 
 - Hub routing headers added to all requests (not part of Credentials object itself, but established after handshake)
 
 ### 2.3.0
-- Same structure as 2.2.1
-- Stronger wording on TOKEN_A scope restrictions
-- Clearer guidance on version negotiation when one party supports 2.3.0 and the other only 2.2.1
+- Adds optional `hub_party_id` (`CiString(5)`), formed from country code plus party ID. A platform supporting hub routing must provide it.
+- Hub platforms include reachable parties as ordinary CredentialsRole entries in `roles`; retain each `(country_code, party_id, role)` identity.
+- The inspected core Role enum lists `CPO`, `EMSP`, `NAP`, `NSP`, `OTHER`, and `SCSP`, without the older `HUB` value. Read [roles.md](roles.md) for mapping and authorization.
+- Keep bootstrap TOKEN_A restricted to Versions/Credentials. Pin the edition's HTTP error behavior and discover actual URLs. See [ocpi-2.3.0.md](ocpi-2.3.0.md).
 
 ---
 
@@ -169,10 +175,14 @@ Booking uses a separate 2.3.0 package; read that package's version endpoint and 
 
 ### Token Storage
 Store per-partner:
-- Their TOKEN_B (you call them with this)
-- Your TOKEN_C (they call you with this — validate on every incoming request)
+- The outbound credentials token supplied by the peer, used to call them
+- The inbound credentials token supplied by you, verified when they call you
 - Their `/versions` URL
 - Their declared roles and `party_id`/`country_code`
+
+If you initiated the handshake, outbound is TOKEN_C and inbound is TOKEN_B.
+If you accepted registration, outbound is TOKEN_B and inbound is TOKEN_C.
+Avoid hard-coded B/C storage labels that reverse when the initiating side changes.
 
 ### Token Rotation (PUT /credentials)
 Either party can initiate a token rotation at any time. Same flow as POST but replaces the existing TOKEN_C with a new one. The old token MUST remain valid until the new one is confirmed.

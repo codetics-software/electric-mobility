@@ -1,6 +1,10 @@
 # OCPI Canonical Examples
 
-Source: OCPI 2.2.1 official specification examples.
+The examples before the final 2.3.0 section illustrate the **2.2.1** wire
+contract, adapted from the official specification. Do not send their legacy
+Price or Tariff shapes to a 2.3.0 peer. The final section provides explicitly
+labeled 2.3.0 implementation fixtures; read
+[the migration guide](../references/ocpi/ocpi-2.3.0.md) and pin the partner edition.
 
 ## Credentials Registration
 
@@ -267,5 +271,144 @@ POST /ocpi/cpo/2.2.1/commands/START_SESSION
 POST https://emsp.example.com/ocpi/commands/result/cmd-001
 {
   "result": "ACCEPTED"
+}
+```
+
+## OCPI 2.3.0 fixtures
+
+These illustrative payloads use the stable `v2.3.0` types and inspected maintained
+core. They are not proof of partner conformance. Object payloads appear inside
+OCPI response envelopes where the endpoint requires an envelope.
+
+### Price with multiple taxes (Session/CDR cost type)
+
+Required `before_taxes` replaces 2.2.1's `excl_vat`. Tax entries require `name`
+and `amount`; percentages and tax account numbers are optional.
+
+```json
+{
+  "before_taxes": 10.0,
+  "taxes": [
+    { "name": "Example tax A", "percentage": 5.0, "amount": 0.5 },
+    { "name": "Example tax B", "amount": 1.0 }
+  ]
+}
+```
+
+### Tariff with explicit tax basis and PriceLimit
+
+PriceLimit is distinct from Price; it uses `before_taxes` and optional
+`after_taxes`. `tax_included` is required in 2.3.0. ENERGY prices are per kWh
+while step_size is in Wh. Tax labels/rates here are illustrative.
+
+```json
+{
+  "country_code": "FR",
+  "party_id": "CPO",
+  "id": "ENERGY-230",
+  "currency": "EUR",
+  "tax_included": "NO",
+  "min_price": { "before_taxes": 1.0, "after_taxes": 1.2 },
+  "elements": [
+    {
+      "price_components": [
+        { "type": "ENERGY", "price": 0.35, "vat": 20.0, "step_size": 1 }
+      ]
+    }
+  ],
+  "last_updated": "2026-10-05T09:00:00Z"
+}
+```
+
+### Location with Parking and EVSEParking
+
+`vehicle_types` belongs to Parking. An EVSE links to a parking object's id;
+`evse_position` describes its placement. Provider names are informational,
+independent of party identity and authorization.
+
+```json
+{
+  "country_code": "FR",
+  "party_id": "CPO",
+  "id": "LOC-230",
+  "publish": true,
+  "address": "1 Example Street",
+  "city": "Paris",
+  "country": "FRA",
+  "coordinates": { "latitude": "48.856600", "longitude": "2.352200" },
+  "time_zone": "Europe/Paris",
+  "help_phone": "+33100000000",
+  "parking_places": [
+    {
+      "id": "P1",
+      "vehicle_types": ["PERSONAL_VEHICLE"],
+      "restricted_to_type": false,
+      "reservation_required": false
+    }
+  ],
+  "evses": [
+    {
+      "uid": "EVSE-230",
+      "status": "AVAILABLE",
+      "parking": [{ "parking_id": "P1", "evse_position": "LEFT" }],
+      "accepted_service_providers": ["Example Mobility"],
+      "connectors": [
+        {
+          "id": "1",
+          "standard": "IEC_62196_T2_COMBO",
+          "format": "CABLE",
+          "power_type": "DC",
+          "max_voltage": 1000,
+          "max_amperage": 200,
+          "capabilities": ["ISO_15118_2_PLUG_AND_CHARGE"],
+          "last_updated": "2026-10-05T09:00:00Z"
+        }
+      ],
+      "last_updated": "2026-10-05T09:00:00Z"
+    }
+  ],
+  "last_updated": "2026-10-05T09:00:00Z"
+}
+```
+
+### Hub Credentials with reachable parties
+
+The hub identity is distinct from represented CPO/EMSP parties; do not add the
+legacy `HUB` role to this core contract. The token is a fictitious placeholder,
+provided unencoded in Credentials; the Authorization header base64-encodes it.
+
+```json
+{
+  "token": "example-placeholder-token",
+  "url": "https://hub.example.com/ocpi/versions",
+  "hub_party_id": "FRHUB",
+  "roles": [
+    {
+      "role": "CPO",
+      "country_code": "FR",
+      "party_id": "CPO",
+      "business_details": { "name": "Example Operator" }
+    },
+    {
+      "role": "EMSP",
+      "country_code": "FR",
+      "party_id": "MSP",
+      "business_details": { "name": "Example Mobility" }
+    }
+  ]
+}
+```
+
+### OpenEnum and unknown-field handling
+
+Retain an unknown connector classification as a string without claiming support
+for it. Accept a non-specified descriptive JSON field while continuing to reject
+missing required fields and unauthorized actions. This fragment is not a full
+Connector object:
+
+```json
+{
+  "standard": "EXAMPLE_FUTURE_CONNECTOR",
+  "maintenance_contact": "Example operator desk"
 }
 ```

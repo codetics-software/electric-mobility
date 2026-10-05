@@ -6,6 +6,13 @@ The [official OCPI repository](https://github.com/ocpi/ocpi) is the authority fo
 
 Use the module references below for engineering context, then verify exact fields, endpoints, status codes, and obligations against the pinned upstream source. Partner or hub profiles may narrow the supported modules and change operational expectations; label those deviations.
 
+For new work, explicitly select stable **2.3.0** as the default while negotiating
+each partner's actual contract. Read [ocpi-2.3.0.md](ocpi-2.3.0.md) for concrete
+2.2.1-d2 migration changes and edition 2 corrections, and [roles.md](roles.md)
+for market roles, interfaces, and authorization. Read
+[code-design-and-api.md](../code-design-and-api.md) for all assistants' engineering
+rules, Next.js forms, versioned APIs, and generated OpenAPI JSON.
+
 ## What Is OCPI?
 
 The **Open Charge Point Interface (OCPI)** is the backend-to-backend protocol for EV charging interoperability. It lets a Charge Point Operator (CPO) and an e-Mobility Service Provider (eMSP) exchange structured data over HTTPS so that a driver registered with one network can charge on another network's chargers — without either side exposing its internal systems.
@@ -52,9 +59,10 @@ Each module defines:
 | **CPO** (Charge Point Operator) | Locations, EVSEs, Sessions, CDRs, Tariffs |
 | **eMSP** (e-Mobility Service Provider) | Tokens, driver accounts |
 
-### OCPI 2.2 / 2.2.1 / 2.3.0 — Multi-Role Platform Model
+### Multi-role platforms and 2.3.0 role changes
 
-A **Platform** can host multiple roles simultaneously. New roles added:
+A **Platform** can host multiple parties and roles simultaneously. The following
+are business responsibilities; use the exact version's wire enum:
 
 | Role | Purpose |
 |---|---|
@@ -62,8 +70,15 @@ A **Platform** can host multiple roles simultaneously. New roles added:
 | **eMSP** | Manages driver accounts and roaming |
 | **Hub** | Routes OCPI messages between multiple platforms |
 | **NSP** (Navigation Service Provider) | Receives Location data for map/navigation apps |
-| **NAP** (National Access Point) | National data aggregator (EU AFIR); can push and receive |
+| **NAP** (National Access Point) | National data aggregator; access and interfaces depend on the selected modules/profile |
 | **SCSP** (Smart Charging Service Provider) | Sends ChargingProfiles to CPOs for grid optimization |
+
+In inspected 2.3.0 core, `Role` values are `CPO`, `EMSP`, `NAP`, `NSP`, `OTHER`,
+and `SCSP`. `HUB` is an older wire role: 2.3.0 describes hub routing with
+`hub_party_id` and includes reachable parties in Credentials.roles. PTP is a
+Payments business actor, not a listed core Role value. Keep market roles separate
+from module `InterfaceRole` (`SENDER`/`RECEIVER`) and local permissions. See
+[roles.md](roles.md) before implementing these mappings.
 
 ---
 
@@ -127,6 +142,8 @@ Hub routing headers in the 2.2+ line:
 ## Module Reference Files
 
 - [`versions.md`](versions.md)
+- [`ocpi-2.3.0.md`](ocpi-2.3.0.md)
+- [`roles.md`](roles.md)
 - [`credentials.md`](credentials.md)
 - [`locations.md`](locations.md)
 - [`sessions.md`](sessions.md)

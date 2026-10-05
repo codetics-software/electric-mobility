@@ -46,7 +46,7 @@ HubClientInfo answers these questions.
 |---|---|---|
 | `party_id` | string(3) | Party ID of the connected platform |
 | `country_code` | string(2) | Country of the connected platform |
-| `role` | Role | `CPO`, `EMSP`, `HUB`, `NAP`, `NSP`, `SCSP` |
+| `role` | Role | Version-specific: inspected 2.3.0 uses CPO, EMSP, NAP, NSP, OTHER, SCSP; do not carry over legacy HUB |
 | `status` | ConnectionStatus | Current connection status |
 | `last_updated` | DateTime | When this status was last changed |
 

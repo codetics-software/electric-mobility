@@ -7,6 +7,10 @@ The Sessions module provides **real-time visibility of active and completed char
 **Data owner**: CPO  
 **Direction**: CPO (Sender) → eMSP (Receiver)
 
+Cost schemas depend on the negotiated version: 2.2.1 uses excl_vat/incl_vat;
+2.3.0 uses before_taxes/taxes. Read the Version Differences section and
+[2.3.0 fixtures](../../examples/ocpi-examples.md#ocpi-230-fixtures) before implementation.
+
 ---
 
 ## Version Availability
@@ -63,7 +67,7 @@ CPO creates CDR (billing record, separate module)
 | `meter_id` | string? | Physical meter serial number |
 | `currency` | string | ISO 4217 currency code |
 | `charging_periods` | ChargingPeriod[] | Time-sliced cost breakdown |
-| `total_cost` | Price? | Running total (may be null until complete) |
+| `total_cost` | Price? | Optional estimate; 2.2.1 excl_vat/incl_vat versus 2.3.0 before_taxes/taxes |
 | `status` | SessionStatus | `ACTIVE`, `COMPLETED`, `INVALID`, `PENDING`, `RESERVATION` |
 | `last_updated` | DateTime | |
 
@@ -196,10 +200,10 @@ The CPO responds with `200` + acceptance or rejection of the preference.
 - Session-level smart charging preferences
 
 ### 2.3.0
-- Improved event tracking within sessions
-- Clearer update mechanisms — CPO must send PATCH immediately on any meaningful state change
-- Additional `CdrToken` fields for global unique identification (`country_code`, `party_id`)
-- Aligned with AFIR requirements for session transparency
+- `total_cost` uses the new shared `Price`: required `before_taxes`, with `taxes` entries (`name`, `amount`, optional `percentage` and `account_number`). Keep 2.2.1's `excl_vat`/`incl_vat` schema in its own adapter.
+- `CdrToken.country_code` and `party_id` were already required in 2.2.1; they are not new Session fields in 2.3.0.
+- Accept unspecified JSON fields and handle OpenEnum values where the selected type permits them. Do not invent a new Session lifecycle or PATCH deadline from the version number.
+- Read [ocpi-2.3.0.md](ocpi-2.3.0.md) for source pins and tax migration.
 
 ---
 

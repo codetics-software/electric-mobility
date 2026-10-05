@@ -42,26 +42,28 @@ Each level has its own `last_updated` timestamp. Push operations target the most
 | `name` | string | Human-readable site name |
 | `address` | string | Street address |
 | `city` | string | City |
-| `country` | string | ISO 3166-1 alpha-2 (2.1.1) or alpha-3 (2.2.1+) |
+| `country` | string | Physical Location country, ISO 3166-1 alpha-3; distinct from party `country_code` alpha-2 |
 | `coordinates` | GeoLocation | `{ latitude, longitude }` |
 | `evses` | EVSE[] | All EVSEs at this location |
 | `opening_times` | Hours | Operating hours |
 | `charging_when_closed` | boolean | Can charge outside opening hours |
-| `tariffs` | Tariff[] (2.2.1+) | Multiple tariffs per location |
+| `parking_places` | Parking[] (2.3.0) | Parking objects, referenced by EVSE parking links |
+| `help_phone` | CiString(25)? (2.3.0) | Driver assistance telephone number |
 | `energy_mix` | EnergyMix | Renewable energy info |
 | `last_updated` | DateTime | RFC3339 UTC — crucial for sync |
-| `vehicle_type` | VehicleType[] (2.3.0+) | `CAR`, `MOTORCYCLE`, `TRUCK`, `BICYCLE` |
 
 ### `EVSE`
 
 | Field | Type | Description |
 |---|---|---|
-| `uid` | string(36) | Unique within this Location |
-| `evse_id` | string | eMI3 standard ID (e.g. `FR*CPO*E1234`) |
+| `uid` | string(36) | Stable and unique within the CPO platform/suboperators, not only one Location |
+| `evse_id` | string? | Public EVSE ID; optional in the selected schema (e.g. FR*CPO*E1234) |
 | `status` | Status | `AVAILABLE`, `CHARGING`, `INOPERATIVE`, `OUTOFORDER`, `PLANNED`, `REMOVED`, `RESERVED`, `UNKNOWN` |
 | `connectors` | Connector[] | Physical sockets |
 | `capabilities` | Capability[] | `RESERVABLE`, `REMOTE_START_STOP_CAPABLE`, `RFID_READER`, `CREDIT_CARD_PAYABLE` (2.2.1+) |
 | `parking_restrictions` | ParkingRestriction[] | Who can park here |
+| `parking` | EVSEParking[] (2.3.0) | Links to Location parking_places by parking_id, with optional evse_position |
+| `accepted_service_providers` | string(50)[] (2.3.0) | Accepted eMSP names; not party IDs or token authorization |
 | `floor_level` | string | For multi-floor locations |
 | `physical_reference` | string | Label visible on the hardware |
 | `last_updated` | DateTime | |
@@ -78,6 +80,7 @@ Each level has its own `last_updated` timestamp. Push operations target the most
 | `max_amperage` | int | Amps |
 | `max_electric_power` | int (2.2.1+) | Watts — easier than computing V×A |
 | `tariff_ids` | string[] | References to Tariff objects |
+| `capabilities` | ConnectorCapability[] (2.3.0) | Connector-level capabilities, including ISO 15118-2/20 Plug & Charge |
 | `last_updated` | DateTime | |
 
 ---
@@ -175,11 +178,11 @@ PATCH /ocpi/emsp/2.x/locations/FR/MCP/LOC001/EV001
 - Richer `capabilities` including `CREDIT_CARD_PAYABLE`, `REMOTE_START_STOP_CAPABLE`, `START_SESSION_CONNECTOR_REQUIRED`
 
 ### 2.3.0
-- `vehicle_type` array on Location and EVSE — `CAR`, `MOTORCYCLE`, `TRUCK`, `BICYCLE`, `SCOOTER`
-- **NAP data fields** for EU AFIR compliance — structured accessibility and regulatory data
-- `charging_when_closed` clarifications
-- Extensibility mechanism (`custom_data` placeholder approach)
-- Stronger normalization on `evse_id` format validation
+- Adds `Location.parking_places`, `Location.help_phone`, `EVSE.parking`, `EVSE.accepted_service_providers`, and connector-level capabilities.
+- `Parking.vehicle_types` is an OpenEnum array; known values include `PERSONAL_VEHICLE`, `MOTORCYCLE`, `VAN`, and `DISABLED`. Vehicle/dimension/accessibility data belong on Parking, not a `vehicle_type` field on Location/EVSE.
+- Selected enums are open, and unknown JSON fields must not cause rejection solely because they are unspecified. No required `custom_data` wrapper was added.
+- Edition 2 corrects EVSE parking examples (`evse_position`) and Location address/state lengths. Apply Location and CdrLocation limits independently.
+- Read [ocpi-2.3.0.md](ocpi-2.3.0.md) for exact source pins and migration checks.
 
 ---
 
@@ -199,16 +202,19 @@ Status changes (`AVAILABLE` → `CHARGING` → `AVAILABLE`) happen constantly. I
 - EVSE `uid` is internal to OCPI; `evse_id` is the eMI3 public identifier
 
 ### Private Locations (2.2.1+)
-Set `publish: false` for depot chargers not intended for roaming. These SHOULD NOT be sent to eMSPs at all — they are not for public roaming.
+Use `publish: false` to restrict user-facing publication. `publish_allowed_to`
+can identify allowed token holders; exchange with an eMSP can still be needed
+for restricted access or reimbursement. Publication, synchronization, and
+authorization are separate decisions.
 
 ---
 
 ## Common Pitfalls
 
-- **Sending EVSE `uid` vs `evse_id` confusion**: `uid` is your internal OCPI identifier; `evse_id` is the standardized eMI3 ID visible to drivers. Both must be present and stable
+- **Sending EVSE `uid` vs `evse_id` confusion**: uid is the stable OCPI technical identity; evse_id is the public standardized identity and is optional under the selected schema. Do not derive party ownership from its prefix.
 - **Missing `last_updated` on nested objects**: When a Connector changes, update `last_updated` on the Connector, EVSE, and Location — otherwise partial-sync receivers will miss the change
 - **Large Location lists without pagination**: Always implement `Link: rel=next` headers — some operators have thousands of locations
-- **Country code format mismatch**: 2.1.1 uses alpha-2 (`FR`), 2.2.1+ uses alpha-3 (`FRA`) — sending the wrong format breaks validation on the receiver side
+- **Country code format mismatch**: Location.country is physical alpha-3 (`FRA`), while the owning party's country_code is alpha-2 (`FR`). Do not merge them.
 
 ---
 

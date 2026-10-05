@@ -237,6 +237,11 @@ Do not introduce MediatR, MassTransit, Orleans, Kafka, or another framework unle
 
 ## 7. Backend in Kotlin
 
+Read [Kotlin rules](rules/kotlin.md) and the applicable runtime rules before
+implementation. Verify current versions and coroutine/transaction integration;
+the following architecture is independent of whether Spring, Vert.x, Jakarta,
+Ktor, or another explicitly selected runtime provides the adapters.
+
 Use current project conventions. For Spring-based systems, use Spring Boot with Kotlin and clear boundaries.
 
 ```text

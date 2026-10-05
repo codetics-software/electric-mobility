@@ -7,6 +7,10 @@ The CDR module delivers the **final, immutable billing record** for a completed 
 **Data owner**: CPO  
 **Direction**: CPO (Sender) → eMSP (Receiver)
 
+The legacy monetary examples below illustrate 2.2.1. For 2.3.0, use
+`Price.before_taxes`/`taxes` and `Tariff.tax_included`; see the Version Differences
+section and [2.3.0 fixtures](../../examples/ocpi-examples.md#ocpi-230-fixtures).
+
 ---
 
 ## Version Availability
@@ -49,10 +53,10 @@ The CDR module delivers the **final, immutable billing record** for a completed 
 | `cdr_location` | CdrLocation | Location snapshot at session start |
 | `meter_id` | string? | Physical meter serial |
 | `currency` | string | ISO 4217 |
-| `tariffs` | Tariff[] | Tariff snapshot at session start (full object, not just ID) |
+| `tariffs` | Tariff[] | Applicable tariff snapshots; include all applicable changes, not only the initial tariff |
 | `charging_periods` | ChargingPeriod[] | Time-sliced billing breakdown |
 | `signed_data` | SignedData? | Calibration law / Eichrecht signed meter values (2.2.1+) |
-| `total_cost` | Price | Final cost |
+| `total_cost` | Price | Final cost; 2.2.1 excl_vat/incl_vat versus 2.3.0 before_taxes/taxes |
 | `total_fixed_cost` | Price? | Session/flat fees |
 | `total_energy` | number | kWh delivered |
 | `total_energy_cost` | Price? | Energy portion of total |
@@ -217,11 +221,11 @@ The CDR embeds the **full Tariff object** as it existed at session start — not
 - `authorization_reference` for real-time auth traceability
 
 ### 2.3.0
-- Additional `CdrToken` fields for global identification
-- North American tax fields (US/Canada state/province tax)
-- Stronger validation rules on `charging_periods` — periods must be contiguous with no gaps
-- Improved AFIR-aligned transparency requirements
-- `invoice_reference_id` guidance clarified
+- Every `Price` cost field uses required `before_taxes` and a `taxes` breakdown. TaxAmount requires `name` and `amount`; percentage/account number are optional. Do not invent state/province tax fields.
+- `CdrToken.country_code` and `party_id` already existed in 2.2.1. Do not invent a new gapless ChargingPeriod obligation.
+- In edition 2, `PARKING_TIME` measures time the vehicle is not requesting power; station-imposed curtailment alone is not parking evidence. `SignedValue.plain_data` allows 5000 characters.
+- Invoice Reconciliation is an edition 2 capability linking invoices and CDR IDs, not a change that makes original CDRs mutable.
+- Read [ocpi-2.3.0.md](ocpi-2.3.0.md) for source pins and edition gates.
 
 ---
 
@@ -237,7 +241,10 @@ The CDR `POST` endpoint must be idempotent — if the CPO retries the same CDR (
 Implement periodic reconciliation: pull all CPO CDRs from the past N days and compare against your local database. CDRs occasionally arrive late or are re-sent after corrections.
 
 ### VAT Handling
-Always store both `excl_vat` and `incl_vat`. Tax requirements vary by country and change over time. Never derive one from the other — use what the CPO sends.
+Preserve the amounts and tax evidence the CPO actually sends. In 2.2.1,
+`excl_vat` is required and `incl_vat` is optional; do not fabricate the latter.
+In 2.3.0, use `before_taxes` and the supplied `taxes` entries. Keep tax mapping,
+decimal arithmetic, and legal/contractual rounding explicit.
 
 ### Charging Period Continuity
 `ChargingPeriod` entries must be contiguous (each one starts when the previous ends). Validate this on receipt — gaps indicate a data quality issue.

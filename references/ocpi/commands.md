@@ -231,16 +231,16 @@ Later:
 - No `connector_id` in `START_SESSION` (EVSE level only)
 
 ### 2.2.1
-- `connector_id` added to `START_SESSION` and `RESERVE_NOW` — allows targeting a specific socket on multi-connector EVSEs
+- `connector_id` added to `START_SESSION` — allows targeting a specific socket on multi-connector EVSEs. Do not add it to standard `RESERVE_NOW`.
 - `authorization_reference` in `START_SESSION` — links to real-time auth
 - Hub routing: commands must include `OCPI-to-country-code` / `OCPI-to-party-id` headers when going through a hub
 - Richer `CommandResponse` result codes
 
 ### 2.3.0
-- Stronger requirements on `evse_uid` presence in `START_SESSION` (previously optional — now mandatory in most implementations)
-- Clarified timeout behavior — CPO must call back even on failure
-- Improved hub routing documentation for command forwarding
-- `connector_id` explicitly optional in `START_SESSION` (CPO selects best available if omitted)
+- `StartSession.evse_uid` remains optional, and is required when connector_id is supplied. `connector_id` is required if the EVSE advertises START_SESSION_CONNECTOR_REQUIRED; do not silently pick a connector in that case.
+- Hub credentials and reachable-role handling change in 2.3.0; verify party authority before routing commands. Read [roles.md](roles.md).
+- Preserve immediate CommandResponse, asynchronous CommandResult, timeout recovery, and observed Session/station evidence as separate facts.
+- Read [ocpi-2.3.0.md](ocpi-2.3.0.md) and the selected Commands source. Do not make evse_uid universally mandatory or invent commands from another module.
 
 ---
 

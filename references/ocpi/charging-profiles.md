@@ -159,9 +159,9 @@ CPO → POST {response_url}
 - Async callback pattern
 
 ### 2.3.0
-- Aligned with AFIR smart charging requirements
-- Improved documentation on SCSP role vs eMSP acting as SCSP
-- Clearer rules on profile priority when multiple profiles conflict (charger, SCSP, local OCPP config)
+- Apply [roles.md](roles.md) for SCSP/EMSP market roles versus per-module interfaces and authorization.
+- Accept transport extensions and handle open types only where the selected schema permits them. Do not infer new profile-priority or legal obligations from 2.3.0 alone.
+- Verify profile semantics in the selected module and downstream OCPP version. See [ocpi-2.3.0.md](ocpi-2.3.0.md) for the actual release changes.
 
 ---
 
