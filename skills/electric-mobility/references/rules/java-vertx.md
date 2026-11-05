@@ -48,3 +48,22 @@ Test real asynchronous completion, handler failures, blocking-work boundaries,
 stream backpressure, transaction failure, undeploy/shutdown, and reconnection
 when those behaviors change. Ensure asynchronous test failures reach the test
 runner instead of becoming unobserved callback errors.
+
+## Security controls
+
+Names are starting points: confirm them for the installed version.
+
+- **Limits:** set HttpServerOptions max WebSocket frame and message sizes, and
+  BodyHandler.setBodyLimit. Defaults are not sized for a station or partner.
+- **Handshake:** authenticate before accepting the WebSocket, using the supported
+  accept/reject handshake API for your version.
+- **Event loop:** password hashing and certificate work are blocking. Run them through
+  executeBlocking or a worker verticle, or a fleet reconnect will stall every connection.
+- **Client:** WebClient with setFollowRedirects(false), hostname verification on, and
+  trustAll false. Set timeouts, and limit the response body you accept.
+- **mTLS:** set ClientAuth on the server options and read verified peer certificates from
+  the connection. Never read identity from a header unless the peer is a trusted proxy.
+- **Forwarded headers:** Router.allowForward is off by default. Enable it only behind a
+  proxy that overwrites these headers, and never expose the server directly as well.
+- **Event bus:** a clustered event bus carries commands, so encrypt and restrict it. Do
+  not accept command addresses from outside.

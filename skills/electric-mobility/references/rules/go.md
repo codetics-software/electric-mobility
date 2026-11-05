@@ -24,6 +24,30 @@ notes and standard-library documentation too.
   changing concurrent behavior on supported targets; test cancellation, leaks,
   timeouts, serialization, and actual database semantics where relevant.
 
+## Security controls
+
+Names are starting points: confirm them for the installed version.
+
+- **Randomness, comparison, crypto:** crypto/rand, never math/rand, for tokens;
+  crypto/subtle.ConstantTimeCompare; cipher.NewGCM with a fresh nonce; x/crypto argon2 or
+  scrypt for passwords.
+- **Secret leaks:** %+v and %#v print every struct field. Give secret types a String method
+  and a slog LogValuer returning a redacted value.
+- **Server:** set ReadHeaderTimeout and other timeouts, because the zero values mean none.
+  Use http.MaxBytesReader on bodies, and SetReadLimit on WebSockets, since limits vary
+  by library. Stations often send no Origin, so handle origin checks deliberately for
+  station and browser routes.
+- **Client:** set Timeout, and CheckRedirect returning http.ErrUseLastResponse. Never set
+  InsecureSkipVerify in production. Use net.Dialer.Control to refuse private addresses
+  after DNS resolution, and io.LimitReader on responses.
+- **mTLS:** tls.RequireAndVerifyClientCert with ClientCAs, then read r.TLS.VerifiedChains
+  and check the identity yourself. Use PeerCertificates only after verification.
+- **Proxies:** do not read X-Forwarded-For from a blanket helper. Check RemoteAddr against
+  your proxy ranges first.
+- **SQL:** placeholders only, tenant in every query.
+- **Tooling:** run govulncheck alongside go vet. Use the race detector on connection and
+  rate-limit code.
+
 Official sources: [Effective Go](https://go.dev/doc/effective_go),
 [current Go release notes](https://go.dev/doc/devel/release), and
 [context package](https://pkg.go.dev/context). Verify new APIs against the module's

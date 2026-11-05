@@ -47,3 +47,22 @@ has no built-in generator. Preserve versioned contracts and Codetics metadata.
 Test CDI wiring/interceptors, validation, transaction rollback, security scope,
 serialization, deployment, and shutdown in the selected container where changed;
 plain unit tests alone do not verify container semantics.
+
+## Security controls
+
+Names are starting points: confirm them for the installed version.
+
+- **Handshake:** use a ServerEndpointConfig.Configurator to authenticate in
+  modifyHandshake, and put the verified identity in the endpoint's user properties. An
+  @ServerEndpoint with only a path parameter has no authentication at all.
+- **Limits:** set Session max text buffer size and idle timeout, along with container
+  request-body limits.
+- **Authorization:** use @RolesAllowed or Jakarta Security on application services as well
+  as resources. Test it in the real container, because plain unit tests skip interceptors.
+- **Context:** CDI request scope may not be active in WebSocket callbacks. Do not read the
+  tenant from a scope that could be stale. Pass the verified identity explicitly.
+- **mTLS:** read the jakarta.servlet.request.X509Certificate attribute. Client address and
+  scheme behind a proxy are container settings, such as a remote-IP valve, so restrict
+  them to your proxy ranges.
+- **Persistence:** JPA named parameters only. Add tenant to queries, or use container
+  filtering you have tested.

@@ -48,6 +48,30 @@ Read [Vert.x rules](java-vertx.md) or [pure Jakarta rules](java-jakarta.md) befo
 implementing those runtimes. For other Java frameworks, check their own current
 official documentation and apply the same boundaries.
 
+## Security controls
+
+Names are starting points: confirm them for the installed version.
+
+- **Randomness, comparison, crypto:** SecureRandom; MessageDigest.isEqual for secret
+  comparison; AES/GCM/NoPadding with a fresh 12-byte nonce per encryption. Never
+  java.util.Random, String.equals on secrets, ECB, or a reused nonce.
+- **Secret leaks:** a record's generated toString prints every component, including
+  tokens. Wrap secrets in a type that overrides toString, or exclude them explicitly.
+- **Outbound:** java.net.http.HttpClient does not follow redirects by default; keep it
+  that way and set connect and request timeouts. Read through a capped stream instead of
+  an unbounded BodyHandlers.ofString. Never install a trust-all TrustManager or a
+  permissive HostnameVerifier.
+- **Parsing:** never use ObjectInputStream on untrusted data. Keep Jackson default typing
+  off and set StreamReadConstraints. Disable external entities for XML, including OCPP
+  1.6 SOAP.
+- **Addresses:** InetAddress.getByName on a forwarded header performs DNS for hostnames.
+  Use InetAddress.ofLiteral where available, or validate the literal first.
+- **SQL:** PreparedStatement or JPA parameters only. Include tenant in the key or query.
+- **Certificates:** validate with PKIX, then check identity and key usage yourself.
+  Decide how revocation works, because disabling revocation checking leaves it to you.
+- **Runtime:** the JDK's cacerts and blocked.certs are part of your attack surface. Pin
+  the image, and run without root.
+
 Official sources: [Dev.java learning and release references](https://dev.java/learn/),
 [JDK documentation](https://docs.oracle.com/en/java/), and
 [Java virtual-thread guide](https://dev.java/learn/api/virtual-threads/).

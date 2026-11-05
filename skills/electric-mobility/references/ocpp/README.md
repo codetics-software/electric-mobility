@@ -2,6 +2,11 @@
 
 Use this index for station or CSMS work. Establish the negotiated OCPP subprotocol, transport, station identity, security profile, supported functional blocks, specification edition, errata, and vendor firmware before deciding what behavior is required. A message name alone does not establish support.
 
+## Reading a message card
+
+Cards are compact wire-field references derived from the OCA JSON schemas: OCPP-J for 1.6, and the
+Part 3 archive for 2.x. `Required` and constraints are schema facts.
+
 ## Source hierarchy
 
 1. The exact OCA version, edition, and errata agreed for the integration.
@@ -21,7 +26,7 @@ The field cards were derived from the locally available OCA 1.6 JSON schema set 
 | 2.0.1 | [ocpp-2.0.1.md](ocpp-2.0.1.md) | Device Model, EVSE model, TransactionEvent, security and ISO 15118 support |
 | 2.1 | [ocpp-2.1.md](ocpp-2.1.md) | 2.0.1 application logic plus V2X, DER, ISO 15118-20, payments, tariffs, and transaction options |
 
-For implementation, read [message-catalog.md](message-catalog.md) to find the action, then load **only its card** in `messages/<version>/<Action>.md`. Read [websocket-and-runtime.md](websocket-and-runtime.md) for handshake, frame codec, concurrency, and security; [charge-point-management.md](charge-point-management.md) for station/CSMS lifecycles; and the [June 2026 errata digest](errata-2026-06.md) for 2.x behavior corrections. Pair these with [the language guide](../implementation-and-debugging.md) for the target stack.
+For implementation, read [message-catalog.md](message-catalog.md) to find the action, then load **only its card** in `messages/<version>/<Action>.md`. Read [websocket-and-runtime.md](websocket-and-runtime.md) for handshake, frame codec, concurrency, and security; [charge-point-management.md](charge-point-management.md) for station/CSMS lifecycles; and the [June 2026 errata digest](errata-2026-06.md) for 2.x behavior corrections. Pair these with [the language guide](../implementation-and-debugging.md) for the target stack, [station security](../security/ocpp-stations.md) for anything crossing a trust boundary, and [field lessons](../field-lessons.md) for how real stations behave.
 
 OCA states that 1.6 and 2.0.1 are not compatible. Its 2.1 introduction says 2.0.1 application logic remains valid but needs extensions for new features. Treat this as an application-level migration statement, not proof that every station supports every 2.1 action. Verify negotiated subprotocol, schema, and capability for each operation.
 

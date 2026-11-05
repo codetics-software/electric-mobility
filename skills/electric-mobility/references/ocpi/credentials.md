@@ -191,6 +191,9 @@ Either party can initiate a token rotation at any time. Same flow as POST but re
 Both parties must agree on a single version for the connection. Choose the **highest version both support**. If no overlap, connection cannot be established.
 
 ### Security
+For token scope, server-side request forgery, and ownership checks, read
+[securing OCPI and roaming](../security/ocpi-roaming.md).
+
 - Always use TLS (HTTPS) — the spec requires server-side certificates
 - Tokens are base64-encoded UUIDs; rotate them regularly
 - TOKEN_A must be single-use scoped — reject any other endpoint call with it

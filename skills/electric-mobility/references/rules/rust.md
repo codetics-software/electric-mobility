@@ -22,6 +22,29 @@ versions/features, async runtime, deployment target, and lockfile policy.
   the supported toolchain. Test cancellation, wire round trips, storage
   idempotency, and concurrent access where changed.
 
+## Security controls
+
+Names are starting points: confirm them for the installed version.
+
+- **Randomness, comparison, crypto:** OsRng or getrandom; constant-time comparison from
+  the subtle crate; ring or RustCrypto AEADs with a fresh nonce; the argon2 crate for
+  passwords. Do not write your own primitives.
+- **Secret leaks:** derive(Debug) prints every field, and tracing will happily record it.
+  Use secrecy::SecretString or a manual Debug implementation, and zeroize where it helps.
+- **Outbound:** reqwest with redirect::Policy::none() and timeouts. Never use
+  danger_accept_invalid_certs. Limit the response size while streaming, and check resolved
+  addresses for partner calls with a custom resolver or connector.
+- **WebSockets and HTTP:** set max_message_size and max_frame_size in tungstenite's config
+  or axum's upgrade, and a DefaultBodyLimit. Authenticate in the upgrade handler.
+- **mTLS:** rustls with a client-certificate verifier, then check identity yourself. Rustls
+  proves the chain but does not know which station it should be.
+- **Async:** password hashing and other CPU-heavy work belong in spawn_blocking. An
+  unwrap on untrusted input is a denial of service, so return typed errors.
+- **Parsing and SQL:** avoid deny_unknown_fields where the protocol allows extensions, but
+  validate values. Use bound parameters in sqlx or Diesel, and treat format! SQL as a defect.
+- **Dependencies:** use cargo audit or cargo deny, with Cargo.lock committed for services.
+  Keep unsafe out of protocol parsing.
+
 Official sources: [Rust language book](https://doc.rust-lang.org/book/),
 [Rust error handling](https://doc.rust-lang.org/book/ch09-00-error-handling.html),
 and [Tokio task ownership and spawning](https://tokio.rs/tokio/tutorial/spawning).

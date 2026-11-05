@@ -338,6 +338,10 @@ Event names are application choices.
 
 ## 10. Security Baseline
 
+The [security gate](security/README.md), its guides, and
+[vulnerability management](security/vulnerability-management.md) define the controls and
+required tests. This section lists the baseline a platform plan must include.
+
 - tenant/account authorization on every resource traversal;
 - separate human sessions, mobile tokens, station credentials, and partner credentials;
 - MFA and step-up authorization for sensitive operator commands;

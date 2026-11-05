@@ -1,9 +1,8 @@
-# Engineering rules by language and runtime
+# Rules common to every language
 
-Read [agents.md](agents.md) for every task. For design, implementation, review,
-and debugging, apply the common rules below and load only the language/runtime
-files in scope. Rules apply to all programming languages, including ones not
-listed here; this index does not authorize changing the user's chosen stack.
+Do not change the user's chosen stack. Protocol obligations still come from the selected OCPI or OCPP source.
+Each language file has a Security controls section. For a language with no file, use
+[security capabilities](security-capabilities.md) and its official documentation.
 
 ## Current best practices: verify, then apply
 
@@ -29,10 +28,8 @@ listed here; this index does not authorize changing the user's chosen stack.
 
 ## Common implementation rules
 
-- Apply [code-design-and-api.md](../code-design-and-api.md): clean boundaries,
-  explicit API versions, generated OpenAPI JSON and attribution, and no
-  react-hook-form in Next.js. Follow language idioms rather than imposing Java
-  class hierarchies or framework annotations on every language.
+- Follow language idioms rather than imposing Java class hierarchies or framework
+  annotations on every language.
 - Keep parsing/serialization, application orchestration, domain rules, and
   persistence separate. Use explicit identity scopes, units, decimal-safe money,
   UTC protocol timestamps, and supported versioned DTOs.
@@ -50,24 +47,3 @@ listed here; this index does not authorize changing the user's chosen stack.
 - Run the project's formatter, lint/static analysis, compiler/type checks, and
   tests appropriate to the changed behavior. Use real transport/database
   integration tests when framework semantics matter. Report checks actually run.
-
-## Select the relevant files
-
-| Language/runtime | Required rules |
-|---|---|
-| Java | [java.md](java.md) |
-| Java on Vert.x | [java.md](java.md) and [java-vertx.md](java-vertx.md) |
-| Pure Jakarta EE | [java.md](java.md) and [java-jakarta.md](java-jakarta.md) |
-| Kotlin, including Android/multiplatform | [kotlin.md](kotlin.md) |
-| Kotlin on Vert.x/Jakarta | [kotlin.md](kotlin.md) and the corresponding Java runtime file; apply Java-only language advice only where relevant |
-| Swift | [swift.md](swift.md) |
-| C#/.NET | [csharp.md](csharp.md) |
-| Rust | [rust.md](rust.md) |
-| Go | [go.md](go.md) |
-| Python | [python.md](python.md) |
-| TypeScript/JavaScript | [typescript.md](typescript.md) |
-| Any other language/framework | Apply this guide; consult its official style, type, concurrency, security, testing, and supported-release documentation before designing code. Record concrete applicable decisions. |
-
-These are engineering rules. Protocol obligations still come from the selected
-OCPI/OCPP source. Debugging and trust boundaries are covered in
-[implementation-and-debugging.md](../implementation-and-debugging.md).

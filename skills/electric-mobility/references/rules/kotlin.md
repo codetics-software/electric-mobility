@@ -58,3 +58,26 @@ Use configured Kotlin formatting/static analysis and explicit target compilation
 Test coroutine timeout/cancellation, failure propagation, serializer unknown
 values, transaction behavior, and relevant platform lifecycles. Prefer the
 project's coroutine test scheduler for deterministic timing tests over sleeps.
+
+## Security controls
+
+Names are starting points: confirm them for the installed version.
+
+- **JVM primitives:** same as [Java](java.md): SecureRandom, MessageDigest.isEqual,
+  AES-GCM with a fresh nonce.
+- **Secret leaks:** a data class's generated toString prints every property, and logging
+  one leaks its tokens. Use a dedicated secret class with its own toString, or keep
+  secrets out of data classes.
+- **Coroutines:** password hashing and blocking crypto belong on a suitable dispatcher,
+  and never on an event loop. Do not swallow CancellationException in a catch used for an
+  auth failure.
+- **Serialization:** kotlinx.serialization and Jackson do not validate business rules, and
+  non-null declarations do not authorize anything. Limit input size before parsing.
+- **Ktor and Spring:** set WebSocket frame limits, and enable forwarded-header handling
+  only behind a trusted proxy. Authenticate in the upgrade step.
+- **Android storage:** tokens go under a Keystore-backed AES-GCM key, not plain
+  SharedPreferences. Handle key loss by clearing the credential and signing in again.
+- **Android platform:** network security config with cleartext off;
+  allowBackup="false" with data extraction rules; only necessary components exported;
+  verified App Links with autoVerify. Treat Intents and deep links as untrusted input.
+- **Android logs:** remove tokens and idTags from Logcat in every build type.

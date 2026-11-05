@@ -23,6 +23,28 @@ Swift migration guidance before changing isolation defaults or annotations.
   and relevant tests. Verify Codable compatibility, actor transitions, canceled
   tasks, and foreground/background recovery where changed.
 
+## Security controls
+
+Names are starting points: confirm them for the installed version.
+
+- **Secret storage:** Keychain with kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly or
+  stricter. Never UserDefaults, plist, or files. Check SecItem status codes, because a
+  failed write that goes unnoticed loses the session. Items can survive reinstall, so
+  clear them on first launch if your policy requires it.
+- **Crypto:** SecRandomCopyBytes or SystemRandomNumberGenerator for secrets; CryptoKit
+  AES.GCM; no hand-written comparison of signatures, use the framework's verification.
+- **Network:** keep App Transport Security on with no broad exceptions. Never accept every
+  server trust in a URLSession delegate. Implement the redirect delegate where a token
+  could follow a redirect.
+- **Links and QR:** prefer Universal Links over custom schemes. Validate host and path from
+  deep links and scans, and require confirmation in the app before starting or paying.
+- **Secret leaks:** a struct prints all fields in string interpolation and dump. Use
+  CustomStringConvertible on secret types. Mark Logger values privacy: .private.
+- **Truth:** the app displays backend evidence only. Do not compute authorization or final
+  charging state locally. Treat a push as a prompt to refresh, not as proof.
+- **Server-side Swift:** use swift-crypto and SwiftNIO TLS, with explicit frame and body
+  limits.
+
 Official sources: [Swift API design guidelines](https://www.swift.org/documentation/api-design-guidelines/)
 and [Swift concurrency language guide](https://docs.swift.org/latest/documentation/the-swift-programming-language/concurrency/).
 Check the installed language mode and platform availability before selecting APIs.

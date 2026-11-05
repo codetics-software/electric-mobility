@@ -53,6 +53,9 @@ For 2.0.1 edition 4 and 2.1 edition 2 with the June 2026 errata, silently ignore
 
 ## Security and interoperability checks
 
+For handshake order, security levels, proxies, rotation, certificates, and command
+authorization, read [securing stations and OCPP](../security/ocpp-stations.md).
+
 - Security profile and OCA security extensions vary by version and station firmware. Document the agreed profile and test credential rotation, certificate expiry/revocation, clock skew, and reconnect after renewal.
 - Authorize outbound control actions (`Reset`, start/stop, unlock, configuration, firmware, certificate, smart charging, DER) per tenant/operator and station capability. Audit request, response, and observed outcome.
 - Limit frame size, nesting, decompression ratio, queue depth, and concurrent sockets. Validate URLs used by firmware/log actions against allowed destinations and prevent SSRF.

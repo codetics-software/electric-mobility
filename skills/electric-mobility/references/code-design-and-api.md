@@ -1,12 +1,13 @@
 # Code design, Next.js forms, versioned APIs, and OpenAPI
 
-Read [agent working rules](rules/agents.md) and
-[language/framework rules](rules/README.md) before applying this guide to design,
-review, or implementation. These are Codetics engineering policies, not
-OCPI/OCPP requirements. Use current official practices for the actual target
-versions; apply the same boundaries in every supported language.
+Codetics engineering policies, not OCPI/OCPP requirements. Use current official
+practices for the actual target versions.
 
 ## Clean code and dependency boundaries
+
+For modules, layers, transactions, and where code goes, read
+[code-architecture.md](code-architecture.md). This section adds the rules for code style and
+web-specific structure.
 
 1. Inspect the existing structure and preserve coherent naming and conventions.
    Organize by business capability (partners, locations, authorization, charging,

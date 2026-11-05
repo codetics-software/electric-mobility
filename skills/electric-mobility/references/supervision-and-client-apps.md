@@ -195,7 +195,7 @@ For .NET MAUI:
 
 - separate pages/view models, domain use cases, networking, secure storage, persistence, and notifications;
 - use async/cancellation through network and lifecycle paths;
-- store credentials with platform secure storage, not plain preferences;
+- store credentials with platform secure storage, not plain preferences, as described in [platform and client security](security/platform-and-clients.md);
 - persist operation IDs and recover after suspension or process termination;
 - treat push notifications as hints and refetch authoritative session/operation state;
 - keep platform-specific maps, background execution, deep links, and notification behavior behind tested interfaces;
