@@ -312,6 +312,16 @@
         "The output keeps the station-chosen 2.0.1 transactionId alongside the internal session ID and normalizes TransactionEvent and meter values.",
         "The output notes that security profile changes and password rotation use different messages in 2.0.1."
       ]
+    },
+    {
+      "id": 25,
+      "prompt": "Add a versioned GET /api/v1/stations endpoint to our TypeScript CSMS and generate its OpenAPI contract.",
+      "expected_output": "A versioned handler and a generated openapi.json whose info title, description, and contact come from the user's project. The code and the contract carry no comment, signature, name, or link promoting the skill or its author.",
+      "assertions": [
+        "The output versions the route explicitly and produces a generated OpenAPI JSON contract for it.",
+        "The OpenAPI info block uses the project's own title, description, and contact, or placeholders for them, and names no third party.",
+        "The generated source code contains no attribution, thank-you, or signature comment for the skill or its author."
+      ]
     }
   ]
 }

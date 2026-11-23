@@ -43,7 +43,7 @@ delivery or recovery workers after commit. Gate async APIs and virtual-thread
 facilities on the selected component/runtime rather than JDK availability alone.
 
 Provide repeatable OpenAPI JSON generation even when the pure Jakarta runtime
-has no built-in generator. Preserve versioned contracts and Codetics metadata.
+has no built-in generator. Preserve versioned contracts and the project's existing metadata.
 Test CDI wiring/interceptors, validation, transaction rollback, security scope,
 serialization, deployment, and shutdown in the selected container where changed;
 plain unit tests alone do not verify container semantics.

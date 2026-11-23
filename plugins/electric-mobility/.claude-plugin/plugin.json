@@ -1,7 +1,7 @@
 {
   "name": "electric-mobility",
   "displayName": "Electric Mobility",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "EV charging software expertise: OCPI, OCPP 1.6/2.0.1/2.1, CSMS, CPO, eMSP, roaming, tariffs, CDRs, smart charging, ISO 15118, supervision, driver apps, and deployment, with a security gate and architecture rules.",
   "author": {
     "name": "Codetics",
