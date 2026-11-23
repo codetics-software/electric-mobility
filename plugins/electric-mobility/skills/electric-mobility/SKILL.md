@@ -94,7 +94,7 @@ beneficiary, or reimbursed party.
 | HTTP APIs, OpenAPI, Next.js forms, code style | `references/code-design-and-api.md` |
 | Writing code in a language | `references/rules/README.md` and `references/rules/<language>.md`: `java` (plus `java-vertx` or `java-jakarta`), `kotlin`, `swift`, `csharp`, `rust`, `go`, `python`, `typescript` |
 | A language with no file (S2 or S3) | `references/rules/security-capabilities.md` |
-| Answer format for a full architecture, product, or schema request | `references/rules/agents.md` |
+| Answer format for a full architecture, product, or schema request | `references/rules/answer-formats.md` |
 | **Security,** S2 and S3 | `references/security/README.md`, then the matching guide below |
 | Station sockets, OCPP commands, certificates, firmware, AutoCharge | `references/security/ocpp-stations.md` |
 | OCPI credentials, partner calls, roaming tokens, received objects | `references/security/ocpi-roaming.md` |

@@ -6,22 +6,22 @@ Start with SKILL.md, set the security tier, then load only the references its ro
 
 ## Entry points
 
-- [SKILL.md](skills/electric-mobility/SKILL.md): router, security gate, invariants, routing table, exit check
+- [SKILL.md](plugins/electric-mobility/skills/electric-mobility/SKILL.md): router, security gate, invariants, routing table, exit check
 - [AGENTS.md](AGENTS.md): how any AI agent should use the skill and edit this repository
 - [README.md](README.md): what it covers, and how to install it for Claude, Codex, and other agents
 
 ## Core references
 
-- [Security gate](skills/electric-mobility/references/security/README.md)
-- [Domain primer](skills/electric-mobility/references/domain-primer.md)
-- [Field lessons](skills/electric-mobility/references/field-lessons.md)
-- [Code architecture](skills/electric-mobility/references/code-architecture.md)
-- [OCPI overview](skills/electric-mobility/references/ocpi/README.md)
-- [OCPP overview](skills/electric-mobility/references/ocpp/README.md)
-- [OCPP message catalog](skills/electric-mobility/references/ocpp/message-catalog.md)
-- [Smart charging and pricing](skills/electric-mobility/references/smart-charging-and-pricing.md)
-- [Operations and deployment](skills/electric-mobility/references/operations-and-deployment.md)
-- [Connected tools and MCP servers](skills/electric-mobility/references/connected-tools-and-mcp.md)
+- [Security gate](plugins/electric-mobility/skills/electric-mobility/references/security/README.md)
+- [Domain primer](plugins/electric-mobility/skills/electric-mobility/references/domain-primer.md)
+- [Field lessons](plugins/electric-mobility/skills/electric-mobility/references/field-lessons.md)
+- [Code architecture](plugins/electric-mobility/skills/electric-mobility/references/code-architecture.md)
+- [OCPI overview](plugins/electric-mobility/skills/electric-mobility/references/ocpi/README.md)
+- [OCPP overview](plugins/electric-mobility/skills/electric-mobility/references/ocpp/README.md)
+- [OCPP message catalog](plugins/electric-mobility/skills/electric-mobility/references/ocpp/message-catalog.md)
+- [Smart charging and pricing](plugins/electric-mobility/skills/electric-mobility/references/smart-charging-and-pricing.md)
+- [Operations and deployment](plugins/electric-mobility/skills/electric-mobility/references/operations-and-deployment.md)
+- [Connected tools and MCP servers](plugins/electric-mobility/skills/electric-mobility/references/connected-tools-and-mcp.md)
 
 ## Optional
 

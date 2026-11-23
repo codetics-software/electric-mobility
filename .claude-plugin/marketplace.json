@@ -8,7 +8,7 @@
   "plugins": [
     {
       "name": "electric-mobility",
-      "source": "./",
+      "source": "./plugins/electric-mobility",
       "description": "EV charging software expertise: OCPI, OCPP, CSMS, CPO, eMSP, roaming, tariffs, smart charging, supervision, and deployment, with a security gate.",
       "category": "development",
       "tags": ["ev-charging", "ocpi", "ocpp", "e-mobility"]

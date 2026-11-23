@@ -16,19 +16,35 @@ import tempfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-SKILL = REPO / "skills" / "electric-mobility"
+# The plugin folder is what the marketplaces point at and what the Claude plugin directory
+# receives. Development files (scripts, evals, agent instruction files) stay outside it.
+PLUGIN = REPO / "plugins" / "electric-mobility"
+PLUGIN_SOURCE = "./plugins/electric-mobility"
+SKILL = PLUGIN / "skills" / "electric-mobility"
 
 ALLOWED_SUFFIXES = {".md"}
 # The one non-Markdown file allowed in the payload: display metadata for OpenAI Codex.
 OPENAI_METADATA = Path("agents") / "openai.yaml"
 OPENAI_METADATA_KEYS = {"interface", "policy"}
 # Plugin manifests. They may describe the skill, never add executable components.
-CLAUDE_PLUGIN = REPO / ".claude-plugin" / "plugin.json"
+CLAUDE_PLUGIN = PLUGIN / ".claude-plugin" / "plugin.json"
 CLAUDE_MARKETPLACE = REPO / ".claude-plugin" / "marketplace.json"
-CODEX_PLUGIN = REPO / ".codex-plugin" / "plugin.json"
+CODEX_PLUGIN = PLUGIN / ".codex-plugin" / "plugin.json"
 CODEX_MARKETPLACE = REPO / ".agents" / "plugins" / "marketplace.json"
 FORBIDDEN_MANIFEST_KEYS = {"hooks", "commands", "agents", "mcpServers", "apps", "lspServers", "outputStyles", "workflows"}
-FORBIDDEN_ROOT_FILES = (".mcp.json", "mcp.json", ".app.json", ".lsp.json", "hooks", "commands", "agents")
+FORBIDDEN_ROOT_FILES = (".mcp.json", "mcp.json", ".app.json", ".lsp.json", "monitors.json", "hooks", "commands", "agents", "output-styles")
+# What the Claude plugin directory accepts from an organization that is not Verified.
+DIRECTORY_SUFFIXES = {".md", ".txt", ".json", ".yaml", ".yml", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico"}
+DIRECTORY_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico"}
+DIRECTORY_FORBIDDEN_NAMES = {"claude.md", "claude.local.md", "agents.md", "hooks.json", ".mcp.json", ".lsp.json", "monitors.json"}
+PACKAGE_MANAGER_NAMES = {
+    "package.json", "package-lock.json", "npm-shrinkwrap.json", "yarn.lock", ".yarnrc", ".yarnrc.yml",
+    "pnpm-lock.yaml", "pnpm-workspace.yaml", ".npmrc", "bun.lockb", "bunfig.toml", "requirements.txt",
+    "pyproject.toml", "poetry.lock", "pipfile", "pipfile.lock", "uv.lock", "pip.conf", "gemfile",
+    "gemfile.lock", "cargo.toml", "cargo.lock", "go.mod", "go.sum", "composer.json", "composer.lock",
+}
+PORTABLE_PATH_PART = re.compile(r"^[A-Za-z0-9._-]+$")
+WINDOWS_RESERVED = re.compile(r"^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$", re.IGNORECASE)
 # Files at the repository root that agents read as instructions.
 ROOT_AGENT_FILES = ("AGENTS.md", "CLAUDE.md", "GEMINI.md", "llms.txt")
 IGNORED_NAMES = {".DS_Store"}
@@ -233,14 +249,58 @@ def check_manifests(errors):
         source = entries[0].get("source")
         if isinstance(source, dict):
             source = source.get("path")
-        if source not in ("./", "."):
-            errors.append(f"{label}: {SKILL.name!r} source must be the repository root './'")
+        if source != PLUGIN_SOURCE:
+            errors.append(f"{label}: {SKILL.name!r} source must be {PLUGIN_SOURCE!r}")
         for key in sorted(FORBIDDEN_MANIFEST_KEYS & set(entries[0])):
             errors.append(f"{label}: entry declares {key!r}; the plugin must stay a skill")
 
     for name in FORBIDDEN_ROOT_FILES:
-        if (REPO / name).exists():
-            errors.append(f"{name} at the repository root would add a plugin component; remove it")
+        if (PLUGIN / name).exists():
+            errors.append(f"{name} in the plugin folder would add a plugin component; remove it")
+
+
+def check_directory_rules(errors):
+    """The plugin folder holds only what the Claude plugin directory accepts from anyone."""
+    if not PLUGIN.is_dir():
+        errors.append(f"missing plugin folder {PLUGIN.relative_to(REPO)}")
+        return
+    for path in PLUGIN.rglob("*"):
+        if path.name in IGNORED_NAMES:
+            continue
+        relative = path.relative_to(REPO)
+        inside = path.relative_to(PLUGIN)
+        for part in inside.parts:
+            if not PORTABLE_PATH_PART.match(part) or WINDOWS_RESERVED.match(part):
+                errors.append(f"path part {part!r} is not portable: {relative}")
+        if path.is_dir():
+            if path.name == ".claude-plugin" and inside != Path(".claude-plugin"):
+                errors.append(f"nested .claude-plugin folder: {relative}")
+            if path.name == ".claude":
+                errors.append(f".claude folder in the plugin: {relative}")
+            continue
+        name = path.name.lower()
+        suffix = path.suffix.lower()
+        if suffix not in DIRECTORY_SUFFIXES:
+            errors.append(f"file type the plugin directory refuses: {relative}")
+        if name in DIRECTORY_FORBIDDEN_NAMES:
+            errors.append(f"file name the plugin directory refuses: {relative}")
+        if name in PACKAGE_MANAGER_NAMES:
+            errors.append(f"package manager file in the plugin: {relative}")
+        if inside.parts[0] == ".claude-plugin" and path.name != "plugin.json" and suffix not in DIRECTORY_IMAGE_SUFFIXES:
+            errors.append(f"only plugin.json and images may sit in .claude-plugin: {relative}")
+        data = path.read_bytes()
+        if suffix in DIRECTORY_IMAGE_SUFFIXES:
+            if b"PK\x03\x04" in data or b"PK\x05\x06" in data:
+                errors.append(f"image looks like it holds a zip archive; export it again without metadata: {relative}")
+            continue
+        if data.startswith(b"#!"):
+            errors.append(f"file starts with #!: {relative}")
+        if b"\x00" in data:
+            errors.append(f"NUL byte in text file: {relative}")
+        try:
+            data.decode("utf-8")
+        except UnicodeDecodeError:
+            errors.append(f"text file is not UTF-8: {relative}")
 
 
 def is_external(target):
@@ -311,6 +371,7 @@ def main():
     check_content(errors)
     check_openai_metadata(errors)
     check_manifests(errors)
+    check_directory_rules(errors)
     checked = check_references(SKILL, errors, "source")
     check_routed(errors)
     installed_checked, installed_files = simulate_install(errors)
@@ -325,6 +386,7 @@ def main():
     print(f"OK: {checked} references checked in the source")
     print(f"OK: simulated install has {installed_files} files, and all {installed_checked} references resolve")
     print("OK: Claude and Codex plugin manifests agree, and add no hooks, commands, agents, or MCP servers")
+    print(f"OK: {PLUGIN.relative_to(REPO)}/ holds only files the Claude plugin directory accepts")
     print("Next: read the changes yourself. This script cannot judge whether the text is safe.")
     return 0
 

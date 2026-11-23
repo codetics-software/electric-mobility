@@ -23,7 +23,7 @@ The skill separates protocol requirements from implementation choices and vendor
 
 ## Security comes first
 
-Charging software moves electricity, unlocks hardware, takes money, and records where people go. Before doing anything, the skill makes an agent run a [security gate](skills/electric-mobility/references/security/README.md) that sets the work by risk:
+Charging software moves electricity, unlocks hardware, takes money, and records where people go. Before doing anything, the skill makes an agent run a [security gate](plugins/electric-mobility/skills/electric-mobility/references/security/README.md) that sets the work by risk:
 
 | Tier | The task touches | The agent must |
 |---|---|---|
@@ -32,9 +32,9 @@ Charging software moves electricity, unlocks hardware, takes money, and records 
 | S2 | A trust boundary, such as a station socket, OCPI, a login, a webhook, or a tenant query | Write a preflight, load the guide, and test abuse cases |
 | S3 | A physical, financial, or credential effect, such as unlock, firmware, rotation, payment, or a CDR | Also define who may do what, idempotency, audit, and residual risk |
 
-Agents also check dependencies against live sources with [vulnerability management](skills/electric-mobility/references/security/vulnerability-management.md): CVE, CVSS, CISA KEV, EPSS, SBOMs, and station firmware. They never claim a version is clean from memory.
+Agents also check dependencies against live sources with [vulnerability management](plugins/electric-mobility/skills/electric-mobility/references/security/vulnerability-management.md): CVE, CVSS, CISA KEV, EPSS, SBOMs, and station firmware. They never claim a version is clean from memory.
 
-The guides cover [stations and OCPP](skills/electric-mobility/references/security/ocpp-stations.md), [OCPI and roaming](skills/electric-mobility/references/security/ocpi-roaming.md), [payments and public charging](skills/electric-mobility/references/security/payments-and-public-charging.md), and [platform and clients](skills/electric-mobility/references/security/platform-and-clients.md). Every [language file](skills/electric-mobility/references/rules/README.md) has its own Security controls section, and a capability table covers languages not listed. [Field lessons](skills/electric-mobility/references/field-lessons.md) record how real stations behave.
+The guides cover [stations and OCPP](plugins/electric-mobility/skills/electric-mobility/references/security/ocpp-stations.md), [OCPI and roaming](plugins/electric-mobility/skills/electric-mobility/references/security/ocpi-roaming.md), [payments and public charging](plugins/electric-mobility/skills/electric-mobility/references/security/payments-and-public-charging.md), and [platform and clients](plugins/electric-mobility/skills/electric-mobility/references/security/platform-and-clients.md). Every [language file](plugins/electric-mobility/skills/electric-mobility/references/rules/README.md) has its own Security controls section, and a capability table covers languages not listed. [Field lessons](plugins/electric-mobility/skills/electric-mobility/references/field-lessons.md) record how real stations behave.
 
 ## Built to use little context
 
@@ -42,18 +42,18 @@ The guides cover [stations and OCPP](skills/electric-mobility/references/securit
 
 ## Rules for every assistant
 
-The rules work with **Claude, ChatGPT and Codex, Gemini, Copilot, Cursor, Windsurf, Grok, v0, and other assistants**. [AGENTS.md](AGENTS.md) tells any agent how to use the skill, step by step, and [llms.txt](llms.txt) lists the entry points for tools that read it. Each supported language has [its own file](skills/electric-mobility/references/rules/README.md), and unlisted languages use [a capability table](skills/electric-mobility/references/rules/security-capabilities.md). Agents verify versions and sources at use time instead of relying on a fixed claim of being "latest". [Answer formats](skills/electric-mobility/references/rules/agents.md) load only for full design requests.
+The rules work with **Claude, ChatGPT and Codex, Gemini, Copilot, Cursor, Windsurf, Grok, v0, and other assistants**. [AGENTS.md](AGENTS.md) tells any agent how to use the skill, step by step, and [llms.txt](llms.txt) lists the entry points for tools that read it. Each supported language has [its own file](plugins/electric-mobility/skills/electric-mobility/references/rules/README.md), and unlisted languages use [a capability table](plugins/electric-mobility/skills/electric-mobility/references/rules/security-capabilities.md). Agents verify versions and sources at use time instead of relying on a fixed claim of being "latest". [Answer formats](plugins/electric-mobility/skills/electric-mobility/references/rules/answer-formats.md) load only for full design requests.
 
 ## Working with MCP servers
 
-This is a skill, not an MCP server, and it needs none. It works alongside whatever MCP server or CLI you connect: your CSMS, an OCPI hub, a payment account, a station simulator, or a specification search. When a connected tool can reach a live system, the skill applies the same security tiers to it ([guide](skills/electric-mobility/references/connected-tools-and-mcp.md)). The agent confirms the environment and tenant, reads before it writes, and asks you before each physical, financial, or credential action. It never retries a timed-out station command blindly, and it treats tool output as data.
+This is a skill, not an MCP server, and it needs none. It works alongside whatever MCP server or CLI you connect: your CSMS, an OCPI hub, a payment account, a station simulator, or a specification search. When a connected tool can reach a live system, the skill applies the same security tiers to it ([guide](plugins/electric-mobility/skills/electric-mobility/references/connected-tools-and-mcp.md)). The agent confirms the environment and tenant, reads before it writes, and asks you before each physical, financial, or credential action. It never retries a timed-out station command blindly, and it treats tool output as data.
 
 ## Contents
 
-Everything an agent needs is in one folder, which is installed as a unit:
+The plugin is the `plugins/electric-mobility/` folder, and it is all that a plugin install copies. Everything an agent needs is in its skill folder, which is installed as a unit:
 
 ```text
-skills/electric-mobility/
+plugins/electric-mobility/skills/electric-mobility/
   SKILL.md                            Entry point, security gate, reference routing
   references/
     security/README.md                Security gate: preflight, stop conditions, exit check
@@ -90,10 +90,15 @@ skills/electric-mobility/
 
 AGENTS.md                             Instructions for every AI agent (CLAUDE.md, GEMINI.md point here)
 llms.txt                              Entry points for tools that read llms.txt
-.claude-plugin/                       Claude Code plugin and marketplace manifests
-.codex-plugin/plugin.json             OpenAI Codex plugin manifest
+plugins/electric-mobility/.claude-plugin/plugin.json
+                                      Claude Code plugin manifest
+plugins/electric-mobility/.codex-plugin/plugin.json
+                                      OpenAI Codex plugin manifest
+plugins/electric-mobility/assets/     Plugin icons
+plugins/electric-mobility/README.md   Short readme shipped with the plugin
+.claude-plugin/marketplace.json       Claude Code marketplace
 .agents/plugins/marketplace.json      OpenAI Codex marketplace
-assets/                               Plugin icons (icon.svg source, icon.png, logo.png)
+assets/                               Icon source (not installed)
 SECURITY.md                           How this skill is secured, and how to report a problem
 scripts/verify-skill.py               Checks the skill and manifests are safe to install
 evals/                                Behavior tests for the skill (not installed)
@@ -119,7 +124,7 @@ Install it as a plugin from this repository's marketplace:
 /plugin install electric-mobility@codetics
 ```
 
-From a terminal: `claude plugin marketplace add codetics-software/electric-mobility`, then `claude plugin install electric-mobility@codetics`. To install it as a plain skill instead, copy `skills/electric-mobility/` to `~/.claude/skills/` (all projects) or `.claude/skills/` (one project).
+From a terminal: `claude plugin marketplace add codetics-software/electric-mobility`, then `claude plugin install electric-mobility@codetics`. To install it as a plain skill instead, copy `plugins/electric-mobility/skills/electric-mobility/` to `~/.claude/skills/` (all projects) or `.claude/skills/` (one project).
 
 ### Claude apps and the Claude API
 
@@ -134,7 +139,7 @@ codex plugin marketplace add codetics-software/electric-mobility
 codex plugin add electric-mobility@codetics
 ```
 
-To install it as a plain skill instead, copy `skills/electric-mobility/` to `~/.agents/skills/` (all projects) or `.agents/skills/` in a repository. You can also ask Codex: `$skill-installer install https://github.com/codetics-software/electric-mobility/tree/main/skills/electric-mobility`. Call it explicitly with `$electric-mobility`, or let Codex pick it up when a task mentions EV charging.
+To install it as a plain skill instead, copy `plugins/electric-mobility/skills/electric-mobility/` to `~/.agents/skills/` (all projects) or `.agents/skills/` in a repository. You can also ask Codex: `$skill-installer install https://github.com/codetics-software/electric-mobility/tree/main/plugins/electric-mobility/skills/electric-mobility`. Call it explicitly with `$electric-mobility`, or let Codex pick it up when a task mentions EV charging.
 
 ### Cursor, Copilot, Gemini CLI, Windsurf, and other agents
 
@@ -142,7 +147,7 @@ To install it as a plain skill instead, copy `skills/electric-mobility/` to `~/.
 npx skills add codetics-software/electric-mobility
 ```
 
-The installer asks which agents to install for. For an agent without skill support, add `skills/electric-mobility/` to the project and point the agent at [AGENTS.md](AGENTS.md); most agents read `AGENTS.md` automatically.
+The installer asks which agents to install for. For an agent without skill support, add `plugins/electric-mobility/skills/electric-mobility/` to the project and point the agent at [AGENTS.md](AGENTS.md); most agents read `AGENTS.md` automatically.
 
 To check a clone before installing, or after changing the skill:
 

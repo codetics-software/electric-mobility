@@ -8,7 +8,7 @@
       "name": "electric-mobility",
       "source": {
         "source": "local",
-        "path": "./"
+        "path": "./plugins/electric-mobility"
       },
       "policy": {
         "installation": "AVAILABLE"

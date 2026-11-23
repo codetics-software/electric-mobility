@@ -5,7 +5,7 @@ agent does in your project. Treat it like a dependency.
 
 ## What the installed skill contains
 
-Everything under `skills/electric-mobility/` is installed, and nothing outside it is:
+Everything under `plugins/electric-mobility/skills/electric-mobility/` is installed, and nothing outside it is:
 
 - `SKILL.md`, the entry point;
 - `references/` and `examples/`, loaded on demand;
@@ -16,9 +16,11 @@ no hooks, and no pre-approved tools. `scripts/verify-skill.py` fails if that cha
 
 ## Plugin installs
 
-The Claude Code and Codex plugin manifests (`.claude-plugin/`, `.codex-plugin/`,
-`.agents/plugins/`) point at the repository root, so a plugin install copies the whole
-repository. Only the skill is loaded. The manifests declare no hooks, slash commands,
+The plugin lives in `plugins/electric-mobility/`, and both marketplaces (`.claude-plugin/`,
+`.agents/plugins/`) point at that folder, so a plugin install copies only the skill, the two
+plugin manifests, the icons, and a short README. Development files (`scripts/`, `evals/`,
+`AGENTS.md`, and the other agent instruction files) stay at the repository root and are
+never installed. Only the skill is loaded. The manifests declare no hooks, slash commands,
 agents, apps, or MCP servers, and nothing runs when the plugin is installed or used. The
 verifier fails if a manifest declares any of them.
 

@@ -2,7 +2,7 @@
 
 Apply this guide in any assistant's analysis, design, review, or implementation.
 The user's and assistant's task responsibilities are defined in
-[agent working rules](../rules/agents.md); they are separate from these protocol roles.
+[agent working rules](../rules/answer-formats.md); they are separate from these protocol roles.
 
 ## Keep four meanings of role separate
 
