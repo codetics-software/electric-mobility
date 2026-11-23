@@ -8,10 +8,23 @@ agent does in your project. Treat it like a dependency.
 Everything under `skills/electric-mobility/` is installed, and nothing outside it is:
 
 - `SKILL.md`, the entry point;
-- `references/` and `examples/`, loaded on demand.
+- `references/` and `examples/`, loaded on demand;
+- `agents/openai.yaml`, display metadata that OpenAI Codex reads and other agents ignore.
 
-The payload is **Markdown only**. It contains no scripts, no binaries, no hooks, and no
-pre-approved tools. `scripts/verify-skill.py` fails if that changes.
+The payload is **Markdown**, plus that one YAML file. It contains no scripts, no binaries,
+no hooks, and no pre-approved tools. `scripts/verify-skill.py` fails if that changes.
+
+## Plugin installs
+
+The Claude Code and Codex plugin manifests (`.claude-plugin/`, `.codex-plugin/`,
+`.agents/plugins/`) point at the repository root, so a plugin install copies the whole
+repository. Only the skill is loaded. The manifests declare no hooks, slash commands,
+agents, apps, or MCP servers, and nothing runs when the plugin is installed or used. The
+verifier fails if a manifest declares any of them.
+
+The skill ships no MCP server. It tells an agent how to use MCP servers that **you**
+connect, under the same security tiers: confirm the environment, read before writing, and
+ask before each physical, financial, or credential action.
 
 The skill also ships no credentials. Examples use invented identifiers.
 
@@ -43,8 +56,13 @@ The verifier checks the following:
 - the skill folder follows the Agent Skills format, and its name matches the folder;
 - every file the skill refers to exists and stays inside the skill folder, including in a simulated
   install;
-- there are no symlinks, executables, or non-Markdown files in the payload;
-- there are no hidden Unicode characters, which can conceal instructions from a human reviewer;
+- there are no symlinks, executables, or non-Markdown files in the payload, except
+  `agents/openai.yaml`, which may hold display metadata only;
+- the plugin and marketplace manifests are valid, agree on name and version, and declare no
+  hooks, commands, agents, apps, or MCP servers;
+- there are no hidden Unicode characters, which can conceal instructions from a human reviewer,
+  in the skill or in the files agents read at the repository root (`AGENTS.md`, `CLAUDE.md`,
+  `GEMINI.md`, `llms.txt`, and the manifests);
 - there are no secret-shaped strings.
 
 Passing does not prove the text is safe. Automated checks cannot judge intent, so a person still

@@ -1,0 +1,9 @@
+# User-facing metadata for OpenAI Codex. Other agents ignore this file.
+interface:
+  display_name: "Electric Mobility"
+  short_description: "OCPI, OCPP, and EV charging platforms, security first"
+  brand_color: "#0F6B4F"
+  default_prompt: "Use $electric-mobility for this EV charging task. Set the security tier first, then load only the references it routes to."
+
+policy:
+  allow_implicit_invocation: true

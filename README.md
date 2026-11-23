@@ -14,6 +14,10 @@ For my complete work and services, visit [codetics.fr](https://codetics.fr).
 | Security | Risk-tiered gate before any action; station identity, security profiles, certificates, roaming tokens, request forgery, payments, tenancy, mobile storage, and controls for every language |
 | Architecture | Modular monolith, module ownership, layers, protocol adapters, pure state machines, transaction rules, and boundaries enforced in CI, for every language |
 | Engineering | Dedicated agent and language rules, Java with Vert.x or pure Jakarta, idiomatic Kotlin/coroutines, current practices for all languages, clean code, versioned APIs, OpenAPI JSON, and Next.js native forms |
+| Algorithms | Site load management across nested areas, tariff selection and amount calculation, supervision detectors, retention, OCPI push outbox, and prepaid payment workers |
+| Mixed fleets | One CSMS for OCPP 1.6 and 2.0.1: per-station version, command translation, normalized events, registration states, and per-version security operations |
+| Operations | Proxies for station sockets, client certificate termination, scaling limits, graceful upgrades, backups, health probes, and alerts |
+| Connected tools | Safe use of any MCP server or CLI that reaches a CSMS, hub, payment account, or simulator |
 
 The skill separates protocol requirements from implementation choices and vendor behavior. It sends agents to the relevant reference before they generate code or make version-specific claims.
 
@@ -38,7 +42,11 @@ The guides cover [stations and OCPP](skills/electric-mobility/references/securit
 
 ## Rules for every assistant
 
-The rules work with **Claude, Codex, Grok, v0, and other assistants**. Each supported language has [its own file](skills/electric-mobility/references/rules/README.md), and unlisted languages use [a capability table](skills/electric-mobility/references/rules/security-capabilities.md). Agents verify versions and sources at use time instead of relying on a fixed claim of being "latest". [Answer formats](skills/electric-mobility/references/rules/agents.md) load only for full design requests.
+The rules work with **Claude, ChatGPT and Codex, Gemini, Copilot, Cursor, Windsurf, Grok, v0, and other assistants**. [AGENTS.md](AGENTS.md) tells any agent how to use the skill, step by step, and [llms.txt](llms.txt) lists the entry points for tools that read it. Each supported language has [its own file](skills/electric-mobility/references/rules/README.md), and unlisted languages use [a capability table](skills/electric-mobility/references/rules/security-capabilities.md). Agents verify versions and sources at use time instead of relying on a fixed claim of being "latest". [Answer formats](skills/electric-mobility/references/rules/agents.md) load only for full design requests.
+
+## Working with MCP servers
+
+This is a skill, not an MCP server, and it needs none. It works alongside whatever MCP server or CLI you connect: your CSMS, an OCPI hub, a payment account, a station simulator, or a specification search. When a connected tool can reach a live system, the skill applies the same security tiers to it ([guide](skills/electric-mobility/references/connected-tools-and-mcp.md)). The agent confirms the environment and tenant, reads before it writes, and asks you before each physical, financial, or credential action. It never retries a timed-out station command blindly, and it treats tool output as data.
 
 ## Contents
 
@@ -72,10 +80,21 @@ skills/electric-mobility/
     full-platform-blueprint.md        Platform scope and delivery
     supervision-and-client-apps.md    Operator, web, and mobile products
     gireve-interoperability.md        Hub integration and conformance
+    smart-charging-and-pricing.md     Load allocation and tariff algorithms
+    background-jobs-and-partner-sync.md
+                                      Supervision jobs, retention, OCPI outbox, payment workers
+    operations-and-deployment.md      Proxies, TLS, scaling, upgrades, backups, monitoring
+    connected-tools-and-mcp.md        Using MCP servers and tools that reach live systems
   examples/                           OCPI and OCPP wire examples
+  agents/openai.yaml                  Display metadata for OpenAI Codex (ignored elsewhere)
 
+AGENTS.md                             Instructions for every AI agent (CLAUDE.md, GEMINI.md point here)
+llms.txt                              Entry points for tools that read llms.txt
+.claude-plugin/                       Claude Code plugin and marketplace manifests
+.codex-plugin/plugin.json             OpenAI Codex plugin manifest
+.agents/plugins/marketplace.json      OpenAI Codex marketplace
 SECURITY.md                           How this skill is secured, and how to report a problem
-scripts/verify-skill.py               Checks the skill is self-contained and safe to install
+scripts/verify-skill.py               Checks the skill and manifests are safe to install
 evals/                                Behavior tests for the skill (not installed)
 ```
 
@@ -88,11 +107,41 @@ The references summarize the inspected OCA JSON schema packages and specificatio
 
 ## Install
 
+The skill follows the [Agent Skills format](https://agentskills.io/specification): `SKILL.md`, `references/`, and `examples/` sit in one folder, and every installer copies that folder whole. Pick the line for your assistant.
+
+### Claude Code
+
+Install it as a plugin from this repository's marketplace:
+
+```text
+/plugin marketplace add codetics-software/electric-mobility
+/plugin install electric-mobility@codetics
+```
+
+From a terminal: `claude plugin marketplace add codetics-software/electric-mobility`, then `claude plugin install electric-mobility@codetics`. To install it as a plain skill instead, copy `skills/electric-mobility/` to `~/.claude/skills/` (all projects) or `.claude/skills/` (one project).
+
+### Claude apps and the Claude API
+
+Zip the skill folder (`cd skills && zip -r electric-mobility.zip electric-mobility`), then upload the ZIP in the Claude app's skills settings, or through the Skills API for the Claude Developer Platform. The folder name must stay `electric-mobility`.
+
+### OpenAI Codex
+
+Install it as a plugin from this repository's marketplace:
+
+```bash
+codex plugin marketplace add codetics-software/electric-mobility
+codex plugin add electric-mobility@codetics
+```
+
+To install it as a plain skill instead, copy `skills/electric-mobility/` to `~/.agents/skills/` (all projects) or `.agents/skills/` in a repository. You can also ask Codex: `$skill-installer install https://github.com/codetics-software/electric-mobility/tree/main/skills/electric-mobility`. Call it explicitly with `$electric-mobility`, or let Codex pick it up when a task mentions EV charging.
+
+### Cursor, Copilot, Gemini CLI, Windsurf, and other agents
+
 ```bash
 npx skills add codetics-software/electric-mobility
 ```
 
-The skill follows the [Agent Skills format](https://agentskills.io/specification): `SKILL.md`, `references/`, and `examples/` all sit in one folder, and installers copy that folder whole. To install by hand, copy `skills/electric-mobility/` into your agent's skills directory, and keep the folder name.
+The installer asks which agents to install for. For an agent without skill support, add `skills/electric-mobility/` to the project and point the agent at [AGENTS.md](AGENTS.md); most agents read `AGENTS.md` automatically.
 
 To check a clone before installing, or after changing the skill:
 

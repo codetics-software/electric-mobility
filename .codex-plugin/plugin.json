@@ -1,0 +1,28 @@
+{
+  "name": "electric-mobility",
+  "version": "1.0.0",
+  "description": "EV charging software expertise: OCPI, OCPP 1.6/2.0.1/2.1, CSMS, CPO, eMSP, roaming, tariffs, CDRs, smart charging, ISO 15118, supervision, driver apps, and deployment, with a security gate and architecture rules.",
+  "author": {
+    "name": "Codetics",
+    "url": "https://codetics.fr"
+  },
+  "homepage": "https://codetics.fr",
+  "repository": "https://github.com/codetics-software/electric-mobility",
+  "license": "MIT",
+  "keywords": ["ev-charging", "ocpi", "ocpp", "csms", "cpo", "emsp", "roaming", "smart-charging", "iso-15118", "e-mobility"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Electric Mobility",
+    "shortDescription": "OCPI, OCPP, and EV charging platforms, security first",
+    "longDescription": "Design, build, debug, deploy, review, or explain EV charging software in any language. Covers OCPI roaming up to 2.3.0, field-level OCPP 1.6, 2.0.1, and 2.1 message cards, CSMS, CPO, and eMSP architecture, tariffs and CDRs, smart charging, ISO 15118, supervision and driver apps, and operations. Every task passes a risk-tiered security gate first.",
+    "developerName": "Codetics",
+    "category": "Coding",
+    "websiteURL": "https://codetics.fr",
+    "defaultPrompt": [
+      "Explain how a remote start flows from an eMSP app through OCPI and OCPP to the charger",
+      "Review my OCPP WebSocket handler for security and protocol issues",
+      "Design site load management for 20 chargers on a 100 kW connection"
+    ],
+    "brandColor": "#0F6B4F"
+  }
+}

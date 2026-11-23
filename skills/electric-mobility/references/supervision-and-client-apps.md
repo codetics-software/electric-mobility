@@ -308,6 +308,18 @@ correlation/support reference
 
 The server, not the client, decides tenant authorization, protocol mappings, tariff truth, and whether a command may be sent.
 
+Lessons from shipped driver apps (`IMPLEMENTATION CHOICE`):
+
+- **Contract fixtures.** Server tests record real API responses as fixtures; the web and mobile tests decode those exact files. A server change that breaks a client then fails in CI, not in the store.
+- **Compatibility endpoint.** On launch, the app reads a public configuration endpoint (API version, enabled features, tenant branding) and refuses an unreachable or incompatible server with a clear screen.
+- **White-label configuration.** Brand name, API and portal URLs, tenant slug, support and privacy links come from configuration. A release build fails if a placeholder or a non-HTTPS URL remains; a debug build only warns. A demo account exists only in debug builds.
+- **Features hide cleanly.** If push, wallet, or payment credentials are not configured on the server, the app hides or explains that feature rather than failing.
+- **Other operators' QR codes.** Parse the EVSE ID (for example `FR*ABC*E12345*1`) from a foreign link or manual entry, and let the driver choose the operator's site or the app.
+- **Charging cards.** Selling a card links an order to its buyer. Only that buyer can activate the physical card, by scan or printed number; knowing a number is not enough.
+- **Wallet passes are not RFID cards.** An NFC wallet pass uses an encrypted value-added-service protocol. It does not emulate a card UID, so readers that only read the UID ignore it. Check readers before promising it.
+- **In-car screens.** CarPlay charging apps need an entitlement granted by Apple on request; Android Auto has its own category review. Show nearby stations, filter available ones, follow the session, and confirm before stopping.
+- **Languages.** Route all visible text through the translation layer, send the active language to the server, and run a check that fails on untranslated or inconsistent strings.
+
 ## 13. Offline and Recovery UX
 
 Web/mobile connectivity and station connectivity are independent.

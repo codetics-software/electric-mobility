@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify the skill is self-contained, safe to install, and well formed.
+"""Verify the skill and its plugin manifests are self-contained, safe to install, and well formed.
 
 Uses only the standard library, and makes no network calls. It simulates an install
 by copying the skill folder alone to a temporary directory, the way skill installers
@@ -8,6 +8,7 @@ do, then checks that everything the skill refers to is still there.
 Usage: python3 scripts/verify-skill.py
 """
 
+import json
 import re
 import shutil
 import sys
@@ -18,6 +19,18 @@ REPO = Path(__file__).resolve().parent.parent
 SKILL = REPO / "skills" / "electric-mobility"
 
 ALLOWED_SUFFIXES = {".md"}
+# The one non-Markdown file allowed in the payload: display metadata for OpenAI Codex.
+OPENAI_METADATA = Path("agents") / "openai.yaml"
+OPENAI_METADATA_KEYS = {"interface", "policy"}
+# Plugin manifests. They may describe the skill, never add executable components.
+CLAUDE_PLUGIN = REPO / ".claude-plugin" / "plugin.json"
+CLAUDE_MARKETPLACE = REPO / ".claude-plugin" / "marketplace.json"
+CODEX_PLUGIN = REPO / ".codex-plugin" / "plugin.json"
+CODEX_MARKETPLACE = REPO / ".agents" / "plugins" / "marketplace.json"
+FORBIDDEN_MANIFEST_KEYS = {"hooks", "commands", "agents", "mcpServers", "apps", "lspServers", "outputStyles", "workflows"}
+FORBIDDEN_ROOT_FILES = (".mcp.json", "mcp.json", ".app.json", ".lsp.json", "hooks", "commands", "agents")
+# Files at the repository root that agents read as instructions.
+ROOT_AGENT_FILES = ("AGENTS.md", "CLAUDE.md", "GEMINI.md", "llms.txt")
 IGNORED_NAMES = {".DS_Store"}
 # Installers skip these names, so the skill must not depend on them.
 INSTALLER_EXCLUDED = {"metadata.json", ".git", "__pycache__", "__pypackages__"}
@@ -135,14 +148,21 @@ def check_payload(errors):
             errors.append(f"installers skip this name: {relative}")
         if not path.is_file():
             continue
-        if path.suffix not in ALLOWED_SUFFIXES:
+        if path.suffix not in ALLOWED_SUFFIXES and path.relative_to(SKILL) != OPENAI_METADATA:
             errors.append(f"non-Markdown file in skill: {relative}")
         if path.stat().st_mode & 0o111:
             errors.append(f"executable file in skill: {relative}")
 
 
+def content_files():
+    files = list(SKILL.rglob("*.md")) + [SKILL / OPENAI_METADATA]
+    files += [REPO / name for name in ROOT_AGENT_FILES]
+    files += [CLAUDE_PLUGIN, CLAUDE_MARKETPLACE, CODEX_PLUGIN, CODEX_MARKETPLACE]
+    return [path for path in files if path.is_file()]
+
+
 def check_content(errors):
-    for path in SKILL.rglob("*.md"):
+    for path in content_files():
         text = path.read_text(encoding="utf-8")
         relative = path.relative_to(REPO)
         for line_number, line in enumerate(text.splitlines(), 1):
@@ -152,6 +172,75 @@ def check_content(errors):
             for label, pattern in SECRET_PATTERNS.items():
                 if pattern.search(line):
                     errors.append(f"possible {label}: {relative}:{line_number}")
+
+
+def check_openai_metadata(errors):
+    """Codex metadata may set display and invocation policy, nothing that reaches out."""
+    path = SKILL / OPENAI_METADATA
+    if not path.is_file():
+        return
+    keys = set()
+    for line in path.read_text(encoding="utf-8").splitlines():
+        top = re.match(r"^([A-Za-z_]+):", line)
+        if top:
+            keys.add(top.group(1))
+        if re.search(r"https?://", line):
+            errors.append(f"{OPENAI_METADATA} must not contain URLs: {line.strip()}")
+    extra = keys - OPENAI_METADATA_KEYS
+    if extra:
+        errors.append(f"{OPENAI_METADATA} has keys outside {sorted(OPENAI_METADATA_KEYS)}: {sorted(extra)}")
+
+
+def load_json(path, errors):
+    if not path.is_file():
+        errors.append(f"missing {path.relative_to(REPO)}")
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as error:
+        errors.append(f"invalid JSON in {path.relative_to(REPO)}: {error}")
+        return None
+
+
+def check_manifests(errors):
+    """Both plugins describe the same skill, point at this repository, and add nothing executable."""
+    plugins = {path: load_json(path, errors) for path in (CLAUDE_PLUGIN, CODEX_PLUGIN)}
+    for path, data in plugins.items():
+        if data is None:
+            continue
+        label = path.relative_to(REPO)
+        if data.get("name") != SKILL.name:
+            errors.append(f"{label}: name {data.get('name')!r} is not {SKILL.name!r}")
+        for key in sorted(FORBIDDEN_MANIFEST_KEYS & set(data)):
+            errors.append(f"{label}: declares {key!r}; the plugin must stay a skill")
+    loaded = [data for data in plugins.values() if data]
+    for field in ("version", "description"):
+        if len({data.get(field) for data in loaded}) > 1:
+            errors.append(f"plugin manifests disagree on {field}")
+    codex = plugins.get(CODEX_PLUGIN) or {}
+    if codex and codex.get("skills") != "./skills/":
+        errors.append(".codex-plugin/plugin.json: skills must be './skills/'")
+
+    for path in (CLAUDE_MARKETPLACE, CODEX_MARKETPLACE):
+        data = load_json(path, errors)
+        if data is None:
+            continue
+        label = path.relative_to(REPO)
+        entries = [entry for entry in data.get("plugins", []) if entry.get("name") == SKILL.name]
+        if len(entries) != 1:
+            errors.append(f"{label}: must list {SKILL.name!r} exactly once")
+            continue
+        source = entries[0].get("source")
+        if isinstance(source, dict):
+            source = source.get("path")
+        if source not in ("./", "."):
+            errors.append(f"{label}: {SKILL.name!r} source must be the repository root './'")
+        for key in sorted(FORBIDDEN_MANIFEST_KEYS & set(entries[0])):
+            errors.append(f"{label}: entry declares {key!r}; the plugin must stay a skill")
+
+    for name in FORBIDDEN_ROOT_FILES:
+        if (REPO / name).exists():
+            errors.append(f"{name} at the repository root would add a plugin component; remove it")
 
 
 def is_external(target):
@@ -220,6 +309,8 @@ def main():
     skill_tokens, skill_lines = check_budgets(errors)
     check_payload(errors)
     check_content(errors)
+    check_openai_metadata(errors)
+    check_manifests(errors)
     checked = check_references(SKILL, errors, "source")
     check_routed(errors)
     installed_checked, installed_files = simulate_install(errors)
@@ -233,6 +324,7 @@ def main():
     print(f"OK: SKILL.md is about {skill_tokens} tokens and {skill_lines} lines")
     print(f"OK: {checked} references checked in the source")
     print(f"OK: simulated install has {installed_files} files, and all {installed_checked} references resolve")
+    print("OK: Claude and Codex plugin manifests agree, and add no hooks, commands, agents, or MCP servers")
     print("Next: read the changes yourself. This script cannot judge whether the text is safe.")
     return 0
 
