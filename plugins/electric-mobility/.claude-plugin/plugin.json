@@ -8,6 +8,8 @@
     "url": "https://codetics.fr"
   },
   "homepage": "https://codetics.fr",
+  "privacyPolicyUrl": "https://www.codetics.fr/en/privacy",
+  "supportUrl": "https://www.codetics.fr/en/contact",
   "repository": "https://github.com/codetics-software/electric-mobility",
   "license": "MIT",
   "icon": "./assets/logo.png",

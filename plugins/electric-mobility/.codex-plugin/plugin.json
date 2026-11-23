@@ -18,6 +18,7 @@
     "developerName": "Codetics",
     "category": "Coding",
     "websiteURL": "https://codetics.fr",
+    "privacyPolicyURL": "https://www.codetics.fr/en/privacy",
     "defaultPrompt": [
       "Explain how a remote start flows from an eMSP app through OCPI and OCPP to the charger",
       "Review my OCPP WebSocket handler for security and protocol issues",
