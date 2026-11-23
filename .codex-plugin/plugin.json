@@ -23,6 +23,8 @@
       "Review my OCPP WebSocket handler for security and protocol issues",
       "Design site load management for 20 chargers on a 100 kW connection"
     ],
-    "brandColor": "#0F6B4F"
+    "brandColor": "#0F6B4F",
+    "composerIcon": "./assets/icon.png",
+    "logo": "./assets/logo.png"
   }
 }

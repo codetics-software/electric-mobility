@@ -10,5 +10,6 @@
   "homepage": "https://codetics.fr",
   "repository": "https://github.com/codetics-software/electric-mobility",
   "license": "MIT",
+  "icon": "./assets/logo.png",
   "keywords": ["ev-charging", "ocpi", "ocpp", "csms", "cpo", "emsp", "roaming", "smart-charging", "iso-15118", "e-mobility"]
 }

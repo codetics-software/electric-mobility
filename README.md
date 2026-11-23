@@ -93,6 +93,7 @@ llms.txt                              Entry points for tools that read llms.txt
 .claude-plugin/                       Claude Code plugin and marketplace manifests
 .codex-plugin/plugin.json             OpenAI Codex plugin manifest
 .agents/plugins/marketplace.json      OpenAI Codex marketplace
+assets/                               Plugin icons (icon.svg source, icon.png, logo.png)
 SECURITY.md                           How this skill is secured, and how to report a problem
 scripts/verify-skill.py               Checks the skill and manifests are safe to install
 evals/                                Behavior tests for the skill (not installed)
