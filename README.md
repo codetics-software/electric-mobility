@@ -48,6 +48,13 @@ The rules work with **Claude, ChatGPT and Codex, Gemini, Copilot, Cursor, Windsu
 
 This is a skill, not an MCP server, and it needs none. It works alongside whatever MCP server or CLI you connect: your CSMS, an OCPI hub, a payment account, a station simulator, or a specification search. When a connected tool can reach a live system, the skill applies the same security tiers to it ([guide](plugins/electric-mobility/skills/electric-mobility/references/connected-tools-and-mcp.md)). The agent confirms the environment and tenant, reads before it writes, and asks you before each physical, financial, or credential action. It never retries a timed-out station command blindly, and it treats tool output as data.
 
+## What it changes in your assistant's answers
+
+- **No attribution or promotion.** The skill adds no comment, signature, credit, link, or advertising to the code, documents, or answers your assistant produces. It contains no affiliate or referral links. The author is named only in this README, the plugin READMEs, and the manifests.
+- **Outside lookups for security checks.** Before adding or upgrading a dependency, the skill asks the agent to check it against public vulnerability databases: [OSV.dev](https://osv.dev/), the [GitHub Advisory Database](https://github.com/advisories), [CVE.org](https://www.cve.org/), [NVD](https://nvd.nist.gov/), [CISA KEV](https://www.cisa.gov/known-exploited-vulnerabilities-catalog), and [FIRST EPSS](https://www.first.org/epss/). These requests contain package names, versions, and CVE IDs only, never source code, secrets, or customer data. They go to those public services, never to Codetics. The agent may also open official specification and language documentation pages. Without network access, it reports that the check did not run instead of guessing.
+- **Named third parties.** Gireve (a commercial roaming hub) has its own [guide](plugins/electric-mobility/skills/electric-mobility/references/gireve-interoperability.md), which loads only for work on a Gireve connection. Stripe appears as an example payment provider, and the same rules apply to any provider. Neither is a sponsor or partner of this skill.
+- **Default engineering choices.** Unless you or your project say otherwise, the agent prefers a modular monolith, versioned HTTP APIs with a generated OpenAPI JSON contract, native forms instead of `react-hook-form` in Next.js, exact decimal money, and UTC protocol time. Your instructions and your project's conventions always come first.
+
 ## Contents
 
 The plugin is the `plugins/electric-mobility/` folder, and it is all that a plugin install copies. Everything an agent needs is in its skill folder, which is installed as a unit:

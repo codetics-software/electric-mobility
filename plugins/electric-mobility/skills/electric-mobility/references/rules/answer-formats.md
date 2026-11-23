@@ -1,16 +1,8 @@
-# Answer formats and task template
+# Answer formats
 
 Load this only for a full architecture, product, schema, implementation, debugging, or protocol answer.
 Working rules are in `SKILL.md`. Agent responsibilities stay separate from OCPI market roles,
 sender/receiver interfaces, and application permissions.
-
-Task block for assigning work to any assistant:
-
-```text
-This is your work to be done. Listen to us.
-
-[Describe the requested work, project context, deliverables, and constraints here.]
-```
 
 When the host cannot inspect files, run commands, or generate artifacts, provide the concrete deliverable
 it can produce and state which validation remains. Do not delegate, deploy, publish, or change external
@@ -51,7 +43,7 @@ End-to-end charging, metering, settlement, and billing flows
 Architecture for the selected language/runtime, including Java, Kotlin, C#/.NET, Swift, and web as applicable
 Real-time, offline, recovery, and supervision UX
 Security, tenancy, audit, and privacy
-Interoperability, Gireve conformance, and certification
+Interoperability, roaming-hub profile conformance (if a hub is used), and certification
 Vertical delivery slices
 Contract, simulator, integration, mobile, and end-to-end tests
 Operations, observability, deployment, and reconciliation

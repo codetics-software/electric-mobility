@@ -59,7 +59,7 @@ Interoperability
   ├── module sync health
   ├── rejected payloads
   ├── retries/reconciliation
-  └── Gireve/direct-partner health
+  └── hub/direct-partner health
 ```
 
 ## 3. Station Supervision Screen

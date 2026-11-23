@@ -2,7 +2,7 @@
 
 Use this reference when connecting a CPO, eMSP, CPMS/CSMS, or multi-role platform to Gireve.
 
-Gireve is a roaming hub and integration partner. Its implementation guide and onboarding rules can add constraints or extensions around OCPI. Keep three layers separate:
+Gireve is a commercial roaming hub. Its implementation guide and onboarding rules can add constraints or extensions around OCPI. Keep three layers separate:
 
 ```text
 OCPI standard for the selected version

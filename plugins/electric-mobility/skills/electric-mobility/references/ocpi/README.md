@@ -88,7 +88,7 @@ from module `InterfaceRole` (`SENDER`/`RECEIVER`) and local permissions. See
 CPO ↔ eMSP connect directly. Simple, low-latency, but requires one integration per partner pair.
 
 ### Hub-Based (2.2+)
-CPO and eMSP both connect to a roaming hub (GIREVE). The hub routes messages. One integration unlocks the full hub network.
+CPO and eMSP both connect to a roaming hub, which routes messages between parties. One hub connection can reach many partners, but each roaming relationship still needs its own commercial agreement and the hub's profile.
 
 Hub routing headers in the 2.2+ line:
 - `OCPI-from-country-code` / `OCPI-from-party-id`
